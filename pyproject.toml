@@ -1,0 +1,53 @@
+[build-system]
+requires = ["flit_core >=3.11,<4"]
+build-backend = "flit_core.buildapi"
+
+[project]
+name = "matisse-pipeline"
+version = "0.1.0"
+description = "Modern and modular MATISSE interferometric data-reduction pipeline interface"
+authors = [
+    { name = "Anthony Soulain - MATISSE consortium", email = "anthony.soulain@oca.eu" },
+]
+license = "MIT"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Operating System :: MacOS :: MacOS X",
+    "Operating System :: POSIX :: AIX",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Astronomy",
+]
+requires-python = ">=3.10"
+dependencies = []
+
+[project.readme]
+file = "README.md"
+content-type = "text/markdown"
+
+[project.scripts]
+matisse = "matisse_pipeline.cli:main"
+
+[dependency-groups]
+typecheck = ["mypy>=1.14.1", "types-termcolor>=1.1.6.2"]
+test = ["pytest>=7.2.1"]
+
+[tool.ruff.lint]
+exclude = ["*__init__.py"]
+ignore = ["E501"]
+select = ["E", "F", "W", "I"]
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+warn_unused_configs = true
+warn_unused_ignores = true
+warn_unreachable = true
+show_error_context = true
+show_error_codes = true

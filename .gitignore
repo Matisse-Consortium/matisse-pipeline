@@ -1,0 +1,9 @@
+# Minimal git ignore
+__pycache__/
+*.pyc
+.venv/
+dist/
+build/
+*.egg-info/
+.ipynb_checkpoints/
+.DS_Store
