@@ -7,7 +7,7 @@ app = typer.Typer(help="MATISSE data-reduction toolkit")
 # Subcommand: reduce
 # -------------------------
 @app.command()
-def reduce(raw_dir: str, calib_dir: str = None):
+def reduce(raw_dir: str, calib_dir: str | None = None):
     """
     Run the automatic reduction pipeline.
 
