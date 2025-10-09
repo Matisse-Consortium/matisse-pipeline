@@ -33,7 +33,7 @@ matisse = "matisse_pipeline.cli:main"
 
 [dependency-groups]
 typecheck = ["mypy>=1.14.1", "types-termcolor>=1.1.6.2"]
-test = ["pytest>=7.2.1"]
+test = ["pytest>=7.2.1", "ruff", "pre-commit"]
 
 [tool.ruff.lint]
 exclude = ["*__init__.py"]
