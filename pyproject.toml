@@ -23,6 +23,11 @@ classifiers = [
 ]
 requires-python = ">=3.10"
 dependencies = [
+    "astropy>=6.1.7",
+    "astroquery>=0.4.11",
+    "numpy>=2.2.6",
+    "rich>=14.1.0",
+    "tqdm>=4.67.1",
     "typer>=0.19.2",
 ]
 
@@ -31,19 +36,26 @@ file = "README.md"
 content-type = "text/markdown"
 
 [project.scripts]
-matisse = "matisse_pipeline.cli:main"
+matisse = "matisse_pipeline.cli.main:main"
 
 [dependency-groups]
 typecheck = ["mypy>=1.14.1", "types-termcolor>=1.1.6.2"]
 test = ["pytest>=7.2.1", "ruff", "pre-commit"]
 
+[tool.ruff]
+# Exclude all Python files in the legacy folder
+exclude = ["src/matisse_pipeline/legacy/"]
+
 [tool.ruff.lint]
-exclude = ["*__init__.py"]
+exclude = ["*__init__.py", "src/matisse_pipeline/legacy/"]
 ignore = ["E501"]
-select = ["E", "F", "W", "I"]
+select = ["E", "F", "W", "I", "B"]
 
 [tool.ruff.lint.isort]
 combine-as-imports = true
+
+[tool.ruff.per-file-ignores]
+"src/matisse_pipeline/cli/*.py" = ["B008"]
 
 [tool.mypy]
 python_version = "3.10"

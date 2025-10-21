@@ -7,3 +7,13 @@ build/
 *.egg-info/
 .ipynb_checkpoints/
 .DS_Store
+.ruff_cache/
+.pyetst_cache/
+CODESTYLE_MATISSE.md
+
+
+# Ignore legacy from previous scripts structure
+src/matisse_pipeline/core/legacy/
+
+# Ignore all VS Code config except shared settings.json
+.vscode/*
