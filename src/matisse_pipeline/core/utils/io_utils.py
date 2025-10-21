@@ -25,7 +25,7 @@ def _read_list_file(path: Path) -> list[str]:
     return lines
 
 
-def resolve_raw_input(raw_spec: str | Sequence[str]) -> list[Path]:
+def resolve_raw_input(raw_spec: str | Sequence[str]) -> tuple[list[Path], str]:
     """
     Normalize 'raw_spec' into a list of FITS file paths and detect the source type.
 

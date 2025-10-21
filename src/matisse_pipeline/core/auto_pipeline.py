@@ -35,6 +35,7 @@ import shutil
 import sys
 from multiprocessing import Manager, Pool
 from pathlib import Path
+from typing import Any, TypedDict, cast
 
 import numpy as np
 from astropy.io import fits
@@ -61,6 +62,17 @@ from matisse_pipeline.core.utils.log_utils import (
     show_blocs_status,
     show_calibration_status,
 )
+
+
+class RedBlock(TypedDict):
+    action: str
+    recipes: str
+    param: str
+    input: list[tuple[Path, str, dict[str, Any]]]
+    calib: list[Any]
+    status: int
+    tplstart: str
+    iter: int
 
 
 def run_esorex(args):
@@ -353,7 +365,7 @@ def run_pipeline(
         # log.info(f":repeat: [bold cyan]Iteration {iterNumber}[/]")
         iteration_banner(iterNumber)
         if iterNumber > 1:
-            listIter = []
+            listIter: list[str] = []
             log.info("Listing files from previous iteration...")
             for iter in range(iterNumber - 1):
                 repIterPrev = dirResult + "/Iter" + str(iter + 1)
@@ -371,7 +383,7 @@ def run_pipeline(
 
         log.info("Listing reduction blocks...")
         # Reduction Blocks List Initialization
-        listRedBlocks = [
+        list_red_blocks: list[RedBlock] = [
             {
                 "action": " ",
                 "recipes": " ",
@@ -389,22 +401,25 @@ def run_pipeline(
         log.info("Listing files in the reduction blocks...")
         for hdr, filename in zip(allhdr, listRaw, strict=False):
             if "RMNREC" in hdr["HIERARCH ESO DPR TYPE"]:
-                log.warning(filename + " is a RMNREC file!")
+                log.warning(f"{filename} is a RMNREC file!")
                 continue
             else:
                 try:
                     chipname = hdr["HIERARCH ESO DET CHIP NAME"]
                     stri = hdr["HIERARCH ESO TPL START"] + "." + chipname
                 except Exception:
-                    log.warning(filename + " is not a valid MATISSE fits file!")
+                    log.warning("{filename} is not a valid MATISSE fits file!")
                     continue
             tag = matisseType(hdr)
-            listRedBlocks[keyTplStart.index(stri)]["input"].append([filename, tag, hdr])
+            list_red_blocks[keyTplStart.index(stri)]["input"].append(
+                (filename, tag, hdr)
+            )
 
         # Fill the list of actions,recipes,params in the Reduction Blocks List
         log.info("Listing actions in the reduction blocks...")
-        for elt in listRedBlocks:
-            hdr = elt["input"][0][2]
+        for red_block in list_red_blocks:
+            # hdr = red_block["input"][0][2]
+            hdr = cast(dict[str, str], red_block["input"][0][2])
             chip = hdr["HIERARCH ESO DET CHIP NAME"]
             keyTplStartCurrent = hdr["HIERARCH ESO TPL START"] + "." + chip
             if chip == "AQUARIUS":
@@ -412,7 +427,7 @@ def run_pipeline(
             if chip == "HAWAII-2RG":
                 resolution = hdr["HIERARCH ESO INS DIL NAME"]
 
-            action = matisseAction(hdr, elt["input"][0][1])
+            action = matisseAction(hdr, red_block["input"][0][1])
 
             tel = ""
             if "TELESCOP" in hdr:
@@ -421,8 +436,8 @@ def run_pipeline(
             recipes, param = matisseRecipes(
                 action, hdr["HIERARCH ESO DET CHIP NAME"], tel, resolution
             )
-            elt["action"] = action
-            elt["recipes"] = recipes
+            red_block["action"] = action
+            red_block["recipes"] = recipes
             if action == "ACTION_MAT_RAW_ESTIMATES":
                 if hdr["HIERARCH ESO DET CHIP NAME"] == "AQUARIUS":
                     if spectralBinning != "":
@@ -431,9 +446,9 @@ def run_pipeline(
                         paramN += " --spectralBinning=7"
 
                     if paramN == "":
-                        elt["param"] = param
+                        red_block["param"] = param
                     else:
-                        elt["param"] = paramN + " " + param
+                        red_block["param"] = paramN + " " + param
                 else:
                     if spectralBinning != "":
                         paramL += " --spectralBinning=" + spectralBinning
@@ -441,21 +456,21 @@ def run_pipeline(
                         paramL += " --spectralBinning=5"
 
                     if paramL == "":
-                        elt["param"] = param
+                        red_block["param"] = param
                     else:
-                        elt["param"] = paramL + " " + param
+                        red_block["param"] = paramL + " " + param
             else:
-                elt["param"] = param
-            elt["tplstart"] = keyTplStartCurrent
+                red_block["param"] = param
+            red_block["tplstart"] = keyTplStartCurrent
 
         log.info("Searching for GRA4MAT data...")
         count_grav = 0
-        for elt in listRedBlocks:
-            hdr = elt["input"][0][2]
+        for red_block in list_red_blocks:
+            hdr = red_block["input"][0][2]
             keyTplStartCurrent = hdr["HIERARCH ESO TPL START"]
             for fileGV, hdrGV in zip(listGRA4MAT, listhdrGRA4MAT, strict=True):
                 if hdrGV["HIERARCH ESO TPL START"] == keyTplStartCurrent:
-                    elt["input"].append([fileGV, "RMNREC", hdrGV])
+                    red_block["input"].append((fileGV, "RMNREC", hdrGV))
                     count_grav += 1
 
         log.info(f"{count_grav} files identified as GRA4MAT.")
@@ -466,39 +481,39 @@ def run_pipeline(
         with Progress() as progress:
             task = progress.add_task(
                 "[cyan]Listing calibrations...",
-                total=len(listRedBlocks),
+                total=len(list_red_blocks),
             )
-            for elt in listRedBlocks:
-                hdr = elt["input"][0][2]
+            for red_block in list_red_blocks:
+                hdr = red_block["input"][0][2]
                 calib, status = matisseCalib(
                     hdr,
-                    elt["action"],
+                    red_block["action"],
                     listArchive,
-                    elt["calib"],
-                    elt["tplstart"].split(".")[0],
+                    red_block["calib"],
+                    red_block["tplstart"].split(".")[0],
                 )
-                elt["calib"] = calib
-                elt["status"] = status
+                red_block["calib"] = calib
+                red_block["status"] = status
                 progress.advance(task)
 
         log.info(
             "Listing calibrations from previous iteration in the reduction blocks..."
         )
         if iterNumber > 1:
-            for elt in listRedBlocks:
-                hdr = elt["input"][0][2]
+            for red_block in list_red_blocks:
+                hdr = red_block["input"][0][2]
                 calib, status = matisseCalib(
                     hdr,
-                    elt["action"],
+                    red_block["action"],
                     listIter,
-                    elt["calib"],
-                    elt["tplstart"].split(".")[0],
+                    red_block["calib"],
+                    red_block["tplstart"].split(".")[0],
                 )
-                elt["calib"] = calib
-                elt["status"] = status
+                red_block["calib"] = calib
+                red_block["status"] = status
 
         if check_calib and iterNumber == maxIter:
-            show_calibration_status(listRedBlocks, console)
+            show_calibration_status(list_red_blocks, console)
             break
 
         # Create the SOF files
@@ -518,11 +533,11 @@ def run_pipeline(
         cpt = 0
 
         skip_calib_iter = False
-        for i_block, elt in enumerate(listRedBlocks):
-            rbname = elt["recipes"] + "." + elt["tplstart"]
+        for i_block, red_block in enumerate(list_red_blocks):
+            rbname = red_block["recipes"] + "." + red_block["tplstart"]
             log.info(f"[cyan]Starting Block #{i_block + 1} : {rbname}")
             overwritei = overwrite
-            if elt["status"] == 1:
+            if red_block["status"] == 1:
                 cptStatusOne += 1
                 sofname = os.path.join(repIter, rbname + ".sof").replace(":", ":")
                 outputDir = os.path.join(repIter, rbname + ".rb").replace(":", "_")
@@ -550,10 +565,10 @@ def run_pipeline(
                     if overwritei:
                         log.warning("Overwriting existing .sof files")
                         fp = open(sofname, "w")
-                        for frame, tag, hdr in elt["input"]:
+                        for frame, tag, hdr in red_block["input"]:
                             fp.write(f"{str(frame)} {tag}\n")
                             resol = hdr["HIERARCH ESO INS DIL NAME"]
-                        for frame, tag in elt["calib"]:
+                        for frame, tag in red_block["calib"]:
                             fp.write(f"{str(frame)} {tag}\n")
                         fp.close()
                     else:
@@ -568,10 +583,10 @@ def run_pipeline(
                         + " does not exist. Creating it..."
                     )
                     fp = open(sofname, "w")
-                    for frame, tag, hdr in elt["input"]:
+                    for frame, tag, hdr in red_block["input"]:
                         fp.write(f"{str(frame)} {tag}\n")
                         resol = hdr["HIERARCH ESO INS DIL NAME"]
-                    for frame, tag in elt["calib"]:
+                    for frame, tag in red_block["calib"]:
                         fp.write(f"{str(frame)} {tag}\n")
                     fp.close()
 
@@ -590,7 +605,7 @@ def run_pipeline(
                     if os.listdir(outputDir) == []:
                         if check_blocks:
                             log.info("Block ready to be proceeded.")
-                            elt["status"] = -2
+                            red_block["status"] = -2
                     else:
                         if print_sof_status:
                             log.info("outputDir already exists and is not empty...")
@@ -608,14 +623,14 @@ def run_pipeline(
                     os.mkdir(outputDir)
 
                 listNewParams = remove_double_parameter(
-                    elt["param"].replace("/", " --")
+                    red_block["param"].replace("/", " --")
                 )
 
                 cmd = (
                     "esorex --output-dir="
                     + outputDir
                     + " "
-                    + elt["recipes"]
+                    + red_block["recipes"]
                     + " "
                     + listNewParams
                     + " "
@@ -627,9 +642,9 @@ def run_pipeline(
                     sofnamePrev = (
                         repIterPrev
                         + "/"
-                        + elt["recipes"]
+                        + red_block["recipes"]
                         + "."
-                        + elt["tplstart"]
+                        + red_block["tplstart"]
                         + ".sof"
                     )
                     if os.path.exists(sofnamePrev):
@@ -641,17 +656,17 @@ def run_pipeline(
                             shutil.rmtree(outputDir)
                         else:
                             listIterNumber[cpt] = iterNumber
-                            elt["iter"] = iterNumber
+                            red_block["iter"] = iterNumber
                             cptToProcess += 1
                             listCmdEsorex.append(cmd)
                     else:
                         listIterNumber[cpt] = iterNumber
-                        elt["iter"] = iterNumber
+                        red_block["iter"] = iterNumber
                         cptToProcess += 1
                         listCmdEsorex.append(cmd)
                 else:
                     listIterNumber[cpt] = iterNumber
-                    elt["iter"] = iterNumber
+                    red_block["iter"] = iterNumber
                     cptToProcess += 1
                     listCmdEsorex.append(cmd)
             else:
@@ -683,9 +698,9 @@ def run_pipeline(
             )
 
         # Add MDFC Fluxes to CALIB_RAW_INT and TARGET_RAW_INT
-        listOifitsFiles = glob.glob(repIter + "/*.rb/*_RAW_INT*.fits")
-        for elt in listOifitsFiles:
-            hdu = fits.open(elt, mode="update")
+        list_oifits_files = glob.glob(repIter + "/*.rb/*_RAW_INT*.fits")
+        for oifits_filename in list_oifits_files:
+            hdu = fits.open(oifits_filename, mode="update")
             targetname = hdu[0].header["ESO OBS TARG NAME"]
             try:
                 result = v.query_region(targetname, radius="20s")
@@ -713,7 +728,7 @@ def run_pipeline(
             hdu.close()
 
         if show_blocs_status(
-            listCmdEsorex, iterNumber, maxIter, listRedBlocks, check_blocks
+            listCmdEsorex, iterNumber, maxIter, list_red_blocks, check_blocks
         ):
             log.info(f"end {len(listCmdEsorex)} {len(list_raw)}")
             break
