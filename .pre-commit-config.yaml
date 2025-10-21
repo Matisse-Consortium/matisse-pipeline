@@ -39,7 +39,9 @@ repos:
   rev: v0.12.2
   hooks:
   - id: ruff-format
+    exclude: ^src/matisse_pipeline/legacy/
   - id: ruff-check
+    exclude: ^src/matisse_pipeline/legacy/
     args: [--fix, --show-fixes]
 
 - repo: https://github.com/macisamuele/language-formatters-pre-commit-hooks
