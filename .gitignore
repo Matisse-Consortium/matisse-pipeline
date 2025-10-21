@@ -10,7 +10,8 @@ build/
 .ruff_cache/
 .pyetst_cache/
 CODESTYLE_MATISSE.md
-
+# Ignore Iter results from pytest
+Iter*/
 
 # Ignore legacy from previous scripts structure
 src/matisse_pipeline/core/legacy/
