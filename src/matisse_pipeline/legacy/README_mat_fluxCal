@@ -1,0 +1,4 @@
+Before using the mat_fluxCal routine, several steps are required:
+
+- Open a terminal and download the skycalc_cli Python package by typing: python3 -m pip install skycalc_cli
+- Open the libFluxCal.py module in the mat_tools directory and edit line 61 to indicate the path where the executable skycalc_cli was installed on your computer

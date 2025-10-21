@@ -2,7 +2,7 @@
 # https://pre-commit.com/hooks.html
 minimum_pre_commit_version: '3.2'
 
-exclude: (\.fits|\.fits\.gz|\.oifits)$
+exclude: (\.fits|\.fits\.gz|\.oifits)$|^src/matisse_pipeline/legacy/
 
 ci:
   autofix_prs: true
