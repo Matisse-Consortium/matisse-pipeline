@@ -9,14 +9,31 @@ It provides a modern, user-friendly command-line interface (`matisse`) as well a
 
 > Recommended for end-users who only need to use the pipeline.
 
-### 1️⃣ Create and activate a virtual environment
+This project uses [`uv`](https://github.com/astral-sh/uv) to manage environments and dependencies.  
+It’s fully compatible with `pip` but much faster and simpler to use.
+
+### 1️⃣ Install uv
+
+**On Linux / macOS:**
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+**On windows (PowerShell):**
+
+```bash
+powershell -c "irm https://astral.sh/uv/install.ps1 | more"
+```
+
+### 2️⃣ Create and activate a virtual environment
 
 ```bash
 uv venv
 source .venv/bin/activate
 ```
 
-### 2️⃣ Install the package
+### 3️⃣ Install the package
 
 ```bash
 uv pip install git+https://github.com/Matisse-Consortium/matisse-pipeline.git
@@ -24,7 +41,7 @@ uv pip install git+https://github.com/Matisse-Consortium/matisse-pipeline.git
 
 ---
 
-## 🧑‍💻 Developer Installation
+## 🧑‍💻 Developer installation
 
 > For contributors or developers working on the pipeline codebase.
 
@@ -35,14 +52,7 @@ git clone https://github.com/Matisse-Consortium/matisse-pipeline.git
 cd matisse-pipeline
 ```
 
-### 2️⃣ Create and activate a virtual environment
-
-```bash
-uv venv
-source .venv/bin/activate
-```
-
-### 3️⃣ Install in editable mode with dev dependencies
+### 2️⃣ Install in editable mode with dev dependencies
 
 ```bash
 uv pip install -e . --group test --group typecheck
@@ -53,13 +63,13 @@ This installs:
 - `pytest`, `ruff`, and `pre-commit` for testing and linting
 - `mypy` and `types-termcolor` for type checking
 
-### 4️⃣ Run tests
+### 3️⃣ Run tests
 
 ```bash
 uv run pytest
 ```
 
-### 5️⃣ Lint and type check
+### 4️⃣ Lint and type check
 
 ```bash
 uv run ruff check src/
