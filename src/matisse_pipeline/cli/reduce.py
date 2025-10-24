@@ -146,8 +146,8 @@ def reduce(
             check_blocks=check_blocks,
             check_calib=check_calib,
         )
+        log.info(f"[green][SUCCESS] Results saved to {dir_result}")
         console.rule("[bold green]Reduction completed successfully[/]")
-        typer.echo(f"[SUCCESS] Results saved to {dir_result}")
     except Exception as err:
         console.rule("[bold red]Reduction failed[/]")
         log.exception("MATISSE pipeline execution failed.")

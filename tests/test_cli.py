@@ -44,7 +44,7 @@ def test_reduce_empty_directory(tmp_path, caplog):
     ), f"Expected error not found in logs: {error_messages}"
 
 
-def test_reduce_with_one_file(tmp_path):
+def test_reduce_with_one_file(tmp_path, caplog):
     """
     Ensure 'matisse reduce' runs successfully when the directory contains one file.
     In this case, the file is a fake MATISSE one and therefore, no esorex command are
@@ -56,11 +56,43 @@ def test_reduce_with_one_file(tmp_path):
     fits_file = datadir / "MATIS_test_file.fits"
     fits_file.write_text("FAKE DATA")  # content doesn't matter for the test
 
-    result = runner.invoke(
-        app, ["reduce", "--datadir", str(datadir)], catch_exceptions=False
-    )
+    with caplog.at_level("INFO"):
+        result = runner.invoke(
+            app, ["reduce", "--datadir", str(datadir)], catch_exceptions=False
+        )
 
     # --- Assertions ---
     assert result.exit_code == 0, f"Unexpected exit code: {result.exit_code}"
-    assert "[SUCCESS]" in result.stdout, f"Missing success message: {result.stdout}"
-    assert "results" in result.stdout.lower()
+    assert any("[SUCCESS]" in rec.message for rec in caplog.records), (
+        f"Missing success message in logs: {[r.message for r in caplog.records]}"
+    )
+
+
+def test_matisse_format_with_fake_file(tmp_path, caplog):
+    """
+    Ensure `matisse format` runs successfully on a directory containing a fake FITS file.
+
+    The fake file should not trigger any real FITS parsing logic,
+    but the command should complete gracefully and log a success message.
+    """
+    # --- Setup a temporary fake dataset ---
+    datadir = tmp_path / "Iter1"
+    datadir.mkdir()
+    fake_fits = datadir / "fake_science_file.fits"
+    fake_fits.write_text("FAKE DATA")  # content doesn't matter for this test
+
+    # --- Run the CLI command ---
+    with caplog.at_level("INFO"):
+        result = runner.invoke(
+            app,
+            ["format", str(datadir)],
+            catch_exceptions=False,
+        )
+
+    # --- Assertions ---
+    assert result.exit_code == 0, (
+        f"Unexpected exit code: {result.exit_code}\n{result.stdout}"
+    )
+    assert any("Tidyup complete" in rec.message for rec in caplog.records), (
+        f"Missing success message in logs: {[r.message for r in caplog.records]}"
+    )

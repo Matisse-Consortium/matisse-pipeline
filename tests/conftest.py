@@ -23,6 +23,7 @@ def cleanup_iter_dirs():
     yield  # Run the test first
 
     for i in range(1, 5):  # Iter1 to Iter4
-        iter_dir = Path(f"Iter{i}")
-        if iter_dir.exists():
-            shutil.rmtree(iter_dir, ignore_errors=True)
+        for suffix in ("", "_OIFITS"):
+            iter_dir = Path(f"Iter{i}{suffix}")
+            if iter_dir.exists():
+                shutil.rmtree(iter_dir, ignore_errors=True)

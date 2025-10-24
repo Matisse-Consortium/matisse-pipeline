@@ -9,7 +9,7 @@ It provides a modern, user-friendly command-line interface (`matisse`) as well a
 
 > Recommended for end-users who only need to use the pipeline.
 
-This project uses [`uv`](https://github.com/astral-sh/uv) to manage environments and dependencies.  
+This project uses [`uv`](https://github.com/astral-sh/uv) to manage environments and dependencies.
 It’s fully compatible with `pip` but much faster and simpler to use.
 
 ### 1️⃣ Install uv
@@ -99,7 +99,7 @@ mat_autoPipeline.py --dirCalib=.
 
 ## 🧩 Repository Structure
 
-```
+```bash
 matisse-pipeline/
 ├── src/matisse_pipeline/
 │   ├── cli.py                # Main CLI entry point (`mat`)
