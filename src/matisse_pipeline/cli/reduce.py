@@ -18,7 +18,7 @@ from matisse_pipeline.core.utils.log_utils import (
     set_verbosity,
 )
 
-app = typer.Typer(help="Reduce MATISSE raw data automatically.")
+# app = typer.Typer(help="Reduce MATISSE raw data automatically.")
 
 
 class Resolution(str, Enum):
@@ -155,13 +155,13 @@ def reduce(
         raise typer.Exit(code=1) from err
 
 
-# -------------------------
-# Main entrypoint
-# -------------------------
-def main():
-    """CLI entrypoint for MATISSE pipeline reduction."""
-    app()
+# # -------------------------
+# # Main entrypoint
+# # -------------------------
+# def main():
+#     """CLI entrypoint for MATISSE pipeline reduction."""
+#     app()
 
 
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()

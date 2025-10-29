@@ -25,8 +25,11 @@ requires-python = ">=3.10"
 dependencies = [
     "astropy>=6.1.7",
     "astroquery>=0.4.11",
+    "kaleido>=1.1.0",
     "matplotlib>=3.10.7",
     "numpy>=2.2.6",
+    "pandas>=2.3.3",
+    "plotly>=6.3.1",
     "rich>=14.1.0",
     "tqdm>=4.67.1",
     "typer>=0.19.2",
