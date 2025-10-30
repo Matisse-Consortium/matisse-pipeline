@@ -535,6 +535,55 @@ def test_plot_closure_groups_multiple_groups(mock_fig):
     assert y_kwargs["range"] == [-90, 90]
 
 
+def test_make_static_matisse_plot_constructs_full_figure(full_mock_data):
+    """
+    make_static_matisse_plot should integrate all components into a single Plotly figure.
+    """
+    baseline_names = vp.build_blname_list(full_mock_data)
+    cp_names = vp.build_cpname_list(full_mock_data)
+    assert len(baseline_names) == 6
+    assert len(cp_names) == 4
+
+    fig = vp.make_static_matisse_plot(full_mock_data)
+
+    assert isinstance(fig, go.Figure)
+    assert len(fig.data) > 0
+    assert fig.layout.width == 1200
+    assert fig.layout.height == 800
+    assert any(
+        annot.text and "Meta Information" in annot.text
+        for annot in fig.layout.annotations
+    )
+
+    def _axis_domain(axis_id: str):
+        if not axis_id or axis_id == "x":
+            layout_key = "xaxis"
+        else:
+            layout_key = f"xaxis{axis_id[1:]}"
+        axis = getattr(fig.layout, layout_key)
+        return axis.domain
+
+    v2_traces = [tr for tr in fig.data if getattr(tr, "legendgroup", "") == "V2"]
+    assert len(v2_traces) == 6
+    for tr in v2_traces:
+        dom = _axis_domain(tr.xaxis)
+        assert dom[0] < 0.35  # first column
+
+    dphi_traces = [tr for tr in fig.data if getattr(tr, "legendgroup", "") == "dphi"]
+    assert len(dphi_traces) == 6
+    for tr in dphi_traces:
+        dom = _axis_domain(tr.xaxis)
+        assert 0.33 < dom[0] < 0.68  # middle column
+
+    cphase_traces = [
+        tr for tr in fig.data if getattr(tr, "legendgroup", "") == "CPHASE"
+    ]
+    assert len(cphase_traces) == 4
+    for tr in cphase_traces:
+        dom = _axis_domain(tr.xaxis)
+        assert dom[0] > 0.66  # last column
+
+
 def test_show_plot_writes_html(tmp_path):
     """
     show_plot should produce an HTML file when using the real write_html helper.

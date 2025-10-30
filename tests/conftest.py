@@ -7,6 +7,7 @@ that no residual data remains in the working directory.
 """
 
 import shutil
+from itertools import combinations
 from pathlib import Path
 from unittest.mock import MagicMock, Mock
 
@@ -63,75 +64,88 @@ def base_mock_data():
 
 
 @pytest.fixture
-def full_mock_data(base_mock_data):
+def full_mock_data():
     """
     Extended mock data for testing plotting and higher-level functions.
-    Contains 3 telescopes, 3 baselines, and 1 closure-phase triplet.
+    Contains 4 telescopes, 6 baselines, and 4 closure-phase triplets.
     """
-    data = base_mock_data.copy()
-    n_wl = 10  # number of wavelengths
-    n_bl = 3  # number of baselines
-    n_cp = 1  # number of closure-phase triplets
-    n_tel = 3  # number of telescopes
+    rng = np.random.default_rng(42)
+    sta_index = [1, 2, 3, 4]
+    sta_names = ["A0", "B1", "C2", "D0"]
+    tel_names = ["AT1", "AT2", "AT3", "AT4"]
+    n_tel = len(sta_index)
+    n_wl = 12
 
-    data.update(
-        {
-            "WLEN": np.linspace(3.0, 4.0, n_wl),
-            "FLUX": {
-                "FLUX": [np.random.rand(n_wl) for _ in range(n_tel)],
-                "STA_INDEX": [1, 2, 3],
-            },
-            "VIS2": {
-                "STA_INDEX": np.array([[1, 2], [1, 3], [2, 3]]),
-                "VIS2": [np.random.rand(n_wl) for _ in range(n_bl)],
-                "VIS2ERR": [np.random.rand(n_wl) * 0.1 for _ in range(n_bl)],
-                "FLAG": [np.zeros(n_wl, dtype=bool) for _ in range(n_bl)],
-                "U": np.random.rand(n_bl),
-                "V": np.random.rand(n_bl),
-            },
-            "VIS": {
-                "DPHI": [np.random.rand(n_wl) * 10 for _ in range(n_bl)],
-                "DPHIERR": [np.random.rand(n_wl) for _ in range(n_bl)],
-                "FLAG": [np.zeros(n_wl, dtype=bool) for _ in range(n_bl)],
-                "VISAMP": [np.random.rand(n_wl) for _ in range(n_bl)],
-                "VISAMPERR": [np.random.rand(n_wl) * 0.1 for _ in range(n_bl)],
-            },
-            "T3": {
-                "STA_INDEX": np.array([[1, 2, 3]]),
-                "CLOS": [np.random.rand(n_wl) * 20 - 10 for _ in range(n_cp)],
-                "CLOSERR": [np.random.rand(n_wl) for _ in range(n_cp)],
-                "FLAG": [np.zeros(n_wl, dtype=bool) for _ in range(n_cp)],
-            },
-            # Used by make_static_matisse_plot
-            "SEEING": 0.8,
-            "TAU0": 5.0,
-        }
-    )
+    wlen = np.linspace(3.0, 4.0, n_wl)
+    baseline_pairs = np.array(list(combinations(sta_index, 2)))
+    n_baselines = baseline_pairs.shape[0]
+    triplet_indices = np.array(list(combinations(sta_index, 3)))
+    n_triplets = triplet_indices.shape[0]
+
+    flux_values = [rng.random(n_wl) * (i + 1) for i in range(n_tel)]
+    vis2_values = [rng.random(n_wl) for _ in range(n_baselines)]
+    vis2_err = [rng.random(n_wl) * 0.05 for _ in range(n_baselines)]
+    vis_flags = [np.zeros(n_wl, dtype=bool) for _ in range(n_baselines)]
+
+    visamp_values = [np.clip(v + 0.05, 0, 1) for v in vis2_values]
+    visamp_err = [rng.random(n_wl) * 0.05 for _ in range(n_baselines)]
+    dphi_values = [rng.random(n_wl) * 30 - 15 for _ in range(n_baselines)]
+    dphi_err = [rng.random(n_wl) for _ in range(n_baselines)]
+
+    clos_values = [rng.random(n_wl) * 60 - 30 for _ in range(n_triplets)]
+    clos_err = [rng.random(n_wl) * 2 for _ in range(n_triplets)]
+    clos_flags = [np.zeros(n_wl, dtype=bool) for _ in range(n_triplets)]
+
+    data = {
+        "file": "test_full.oifits",
+        "TARGET": "TestTarget",
+        "CATEGORY": "SCI",
+        "DATEOBS": "2025-01-01T01:23:45",
+        "DIT": 0.2,
+        "DISP": "MED",
+        "BAND": "N",
+        "BCD1NAME": "IN",
+        "BCD2NAME": "OUT",
+        "TEL_NAME": tel_names,
+        "STA_INDEX": sta_index,
+        "STA_NAME": sta_names,
+        "SEEING": 0.6,
+        "TAU0": 4.0,
+        "WLEN": wlen,
+        "FLUX": {
+            "FLUX": flux_values,
+            "STA_INDEX": sta_index,
+            "FLAG": [np.zeros(n_wl, dtype=bool) for _ in range(n_tel)],
+        },
+        "VIS2": {
+            "STA_INDEX": baseline_pairs,
+            "VIS2": vis2_values,
+            "VIS2ERR": vis2_err,
+            "FLAG": vis_flags,
+            "U": np.linspace(-60, 60, n_baselines),
+            "V": np.linspace(-40, 40, n_baselines),
+        },
+        "VIS": {
+            "STA_INDEX": baseline_pairs,
+            "VISAMP": visamp_values,
+            "VISAMPERR": visamp_err,
+            "DPHI": dphi_values,
+            "DPHIERR": dphi_err,
+            "FLAG": [np.zeros(n_wl, dtype=bool) for _ in range(n_baselines)],
+        },
+        "T3": {
+            "STA_INDEX": triplet_indices,
+            "CLOS": clos_values,
+            "CLOSERR": clos_err,
+            "FLAG": clos_flags,
+        },
+    }
     return data
 
 
 @pytest.fixture
-def mock_fig2():
-    """Fixture for a mocked Plotly Figure object."""
-    fig = MagicMock(spec=go.Figure)
-
-    # Simulate subplot retrieval for compatibility with helper functions
-    mock_xaxis = Mock()
-    mock_xaxis.anchor = "x2"
-    mock_yaxis = Mock()
-    mock_yaxis.anchor = "y2"
-    fig.get_subplot.return_value = (mock_xaxis, mock_yaxis)
-
-    # Simulate layout structure expected in add_photometric_bands
-    fig.layout.shapes = []
-    fig.layout.annotations = []
-
-    return fig
-
-
-@pytest.fixture
 def mock_fig():
-    """Mocked Plotly Figure with realistic 8×3 layout and fixed subplot axes."""
+    """Mocked Plotly Figure with realistic 8x3  layout and fixed subplot axes."""
     fig = MagicMock(spec=go.Figure)
     fig._grid_ref = {"rows": 8, "cols": 3}
 
