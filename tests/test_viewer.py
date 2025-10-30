@@ -404,6 +404,30 @@ def test_make_vltiplot_mini_returns_lengths_and_layout(mock_fig):
     assert kwargs["text"] == "<b>VLTI LAYOUT</b>"
 
 
+def test_make_vltiplot_mini_no_tels(mock_fig):
+    """
+    Test the case with no tels to highlight.
+    """
+    baseline_names = ["A0-U1"]
+    baseline_colors = ["#abcdef"]
+
+    lengths = vp.make_vltiplot_mini(
+        mock_fig,
+        row=2,
+        col=2,
+        title="VLTI Layout",
+        color="#EEEEEE",
+        baseline_names=baseline_names,
+        baseline_colors=baseline_colors,
+    )
+
+    assert len(lengths) == 1
+
+    mock_fig.add_annotation.assert_called_once()
+    args, kwargs = mock_fig.add_annotation.call_args
+    assert kwargs["text"] == "<b>VLTI LAYOUT</b>"
+
+
 def test_make_uvplot_adds_symmetrical_points(mock_fig):
     """
     make_uvplot should add +uv and -uv markers and configure axes symmetrically.
@@ -489,6 +513,45 @@ def test_plot_obs_groups_single_group_with_errors(mock_fig):
     # Ensure y-axis last call used provided range
     _, y_kwargs = mock_fig.update_yaxes.call_args
     assert y_kwargs["range"] == [0, 1]
+
+
+def test_plot_obs_groups_with_vis_amplitude(mock_fig):
+    """
+    When obs_name='V', the function must use VISAMP data and tag traces with legendgroup 'V'.
+    """
+    wl = np.array([3.0, 3.5, 4.0])
+    vis_amp = np.array([[0.2, 0.4, 0.6], [0.3, 0.5, 0.7]])
+    vis_amp_err = np.array([[0.05, 0.05, 0.04], [0.02, 0.02, 0.03]])
+    flags = np.array([[False, False, True], [False, True, False]])
+    data = {
+        "WLEN": wl,
+        "VIS": {
+            "VISAMP": vis_amp,
+            "VISAMPERR": vis_amp_err,
+            "FLAG": flags,
+        },
+    }
+    baseline_names = ["A-B", "B-C"]
+    colors = ["#AA0000", "#00AA00"]
+
+    vp.plot_obs_groups(
+        mock_fig,
+        data,
+        baseline_names=baseline_names,
+        baseline_colors=colors,
+        show_errors=True,
+        obs_name="V",
+        obs_range=[0, 1],
+    )
+
+    traces = getattr(mock_fig, "_added_traces", [])
+    assert len(traces) == len(baseline_names)
+    for idx, ((trace, row, col), color) in enumerate(zip(traces, colors, strict=True)):
+        assert trace.legendgroup == "V"
+        assert trace.line.color == color
+        assert trace.error_y is not None
+        assert row in (3, 4) and col == 1
+        assert len(trace.y) == int(np.sum(~flags[idx]))
 
 
 def test_plot_closure_groups_multiple_groups(mock_fig):
@@ -582,6 +645,33 @@ def test_make_static_matisse_plot_constructs_full_figure(full_mock_data):
     for tr in cphase_traces:
         dom = _axis_domain(tr.xaxis)
         assert dom[0] > 0.66  # last column
+
+
+def test_make_static_matisse_plot_mix_color_false_defaults(full_mock_data):
+    """
+    With mix_color=False (default), closure traces must use the static palette.
+    """
+    fig = vp.make_static_matisse_plot(full_mock_data, mix_color=False)
+    cphase_traces = [
+        tr for tr in fig.data if getattr(tr, "legendgroup", "") == "CPHASE"
+    ]
+    expected_colors = ["#FAA050", "#E0C9A6", "#BE7C7E", "#26AEB8"]
+    assert len(cphase_traces) == len(expected_colors)
+    assert [trace.line.color for trace in cphase_traces] == expected_colors
+
+
+def test_make_static_matisse_plot_mix_color_true(full_mock_data):
+    """
+    With mix_color=True, closure traces use blended baseline colors.
+    """
+    fig = vp.make_static_matisse_plot(full_mock_data, mix_color=True)
+    cphase_traces = [
+        tr for tr in fig.data if getattr(tr, "legendgroup", "") == "CPHASE"
+    ]
+    assert len(cphase_traces) == len(full_mock_data["T3"]["STA_INDEX"])
+    static_colors = {"#FAA050", "#E0C9A6", "#BE7C7E", "#26AEB8"}
+    for trace in cphase_traces:
+        assert trace.line.color not in static_colors
 
 
 def test_show_plot_writes_html(tmp_path):

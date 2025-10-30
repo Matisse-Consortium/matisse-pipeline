@@ -71,7 +71,7 @@ def full_mock_data():
     """
     rng = np.random.default_rng(42)
     sta_index = [1, 2, 3, 4]
-    sta_names = ["A0", "B1", "C2", "D0"]
+    sta_names = ["A0", "B2", "C2", "D0"]
     tel_names = ["AT1", "AT2", "AT3", "AT4"]
     n_tel = len(sta_index)
     n_wl = 12
