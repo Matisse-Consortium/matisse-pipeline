@@ -18,3 +18,7 @@ src/matisse_pipeline/core/legacy/
 
 # Ignore all VS Code config except shared settings.json
 .vscode/*
+
+# Relative to coverage
+.coverage
+htmlcov/

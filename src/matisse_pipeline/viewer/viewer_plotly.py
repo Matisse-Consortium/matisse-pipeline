@@ -591,15 +591,6 @@ def plot_spectrum(fig, data):
             col=1,
         )
 
-    # add_photometric_bands(fig, row=2, col=1, ncols=3)
-
-    # add_vband_trace_auto(
-    #     fig, 4.6, 5.0, row=2, col=1, color="rgba(180,255,200,0.25)", name="M-band"
-    # )
-    # add_vband_trace_auto(
-    #     fig, 8.0, 13.0, row=2, col=1, color="rgba(255,200,150,0.25)", name="N-band"
-    # )
-
     wl_range = [lam[-1], lam[0]]
     fig.update_xaxes(
         title="Wavelength (µm)",

@@ -201,3 +201,132 @@ def test_create_meta_with_incomplete_data():
         assert isinstance(result, dict)
     except Exception as e:
         assert isinstance(e, (KeyError, ValueError))
+
+
+def test_make_table_builds_filtered_table_and_annotation(mock_fig):
+    """
+    make_table should add a single Table trace with filtered rows
+    and create a matching annotation banner.
+    """
+    data = {"seeing": 0.8, "tau0": 5.0}
+    title = "Quality check"
+    color = "#ABCDEF"
+    x_annot = 0.42
+    y_annot = 0.91
+
+    result = vp.make_table(
+        mock_fig,
+        data=data,
+        title=title,
+        color=color,
+        row=1,
+        col=1,
+        x_annot=x_annot,
+        y_annot=y_annot,
+        keys=["tau0"],  # case-insensitive filtering
+    )
+
+    assert result is mock_fig
+    mock_fig.add_trace.assert_called_once()
+    table_trace = mock_fig.add_trace.call_args.args[0]
+    assert isinstance(table_trace, go.Table)
+
+    kwargs = mock_fig.add_trace.call_args.kwargs
+    assert kwargs["row"] == 1
+    assert kwargs["col"] == 1
+
+    param_values = list(table_trace.cells.values[0])
+    value_values = list(table_trace.cells.values[1])
+    assert param_values == ["<b>TAU0</b>"]  # uppercase + bold formatting
+    assert value_values == [5.0]  # filtered row only
+    assert table_trace.header.line.color == color
+    assert table_trace.cells.line.color == color
+
+    mock_fig.add_annotation.assert_called_once()
+    _, annotation_kwargs = mock_fig.add_annotation.call_args
+    assert annotation_kwargs["text"] == f"<b>{title}</b>"
+    assert annotation_kwargs["bgcolor"] == color
+    assert annotation_kwargs["x"] == x_annot
+    assert annotation_kwargs["y"] == y_annot
+
+
+def test_make_title_adds_annotation(mock_fig):
+    """
+    make_title must inject a styled annotation using meta information.
+    """
+    meta = {"target": "Vega", "config": "A0-B2-C1", "date": "2025-01-02"}
+    color = "#112233"
+
+    vp.make_title(mock_fig, meta, color=color)
+
+    mock_fig.add_annotation.assert_called_once()
+    _, kwargs = mock_fig.add_annotation.call_args
+    assert color in kwargs["text"]
+    assert "Vega" in kwargs["text"]
+    assert "A0-B2-C1" in kwargs["text"]
+    assert "2025-01-02" in kwargs["text"]
+    assert kwargs["bgcolor"] == "rgba(255,255,255,0.9)"
+    assert kwargs["bordercolor"] == color
+    assert kwargs["xref"] == "paper"
+    assert kwargs["yref"] == "paper"
+
+
+def test_plot_spectrum_adds_flux_traces(mock_fig):
+    """
+    plot_spectrum should add photometric bands, then append one Scatter trace
+    per station with the expected naming convention.
+    """
+    wl = np.array([3.0, 3.5, 4.0])
+    flux_a = np.array([1.0, 2.0, 3.0])
+    flux_b = np.array([0.5, 1.5, 2.5])
+    data = {
+        "WLEN": wl,
+        "STA_INDEX": [1, 2],
+        "STA_NAME": ["STA1", "STA2"],
+        "TEL_NAME": ["UT1", "UT2"],
+        "FLUX": {
+            "FLUX": [flux_a, flux_b],
+            "STA_INDEX": [1, 2],
+        },
+    }
+
+    vp.plot_spectrum(mock_fig, data)
+
+    # Three photometric bands + two flux traces appended
+    assert hasattr(mock_fig, "_added_traces")
+    assert len(mock_fig._added_traces) == 5
+
+    band_traces = mock_fig._added_traces[:3]
+    for trace, row, col in band_traces:
+        assert isinstance(trace, go.Scatter)
+        assert row == 2
+        assert col == 1
+        y_vals = list(trace.y)
+        assert y_vals[0] == y_vals[1] == min(flux_b.min(), flux_a.min())
+        assert y_vals[2] == y_vals[3] == max(flux_b.max(), flux_a.max())
+        assert y_vals[4] == y_vals[0]
+
+    flux_traces = mock_fig._added_traces[3:]
+    assert len(flux_traces) == 2
+
+    names = {trace.name for trace, _, _ in flux_traces}
+    assert names == {"UT1-STA1", "UT2-STA2"}
+
+    for trace, row, col in flux_traces:
+        assert isinstance(trace, go.Scatter)
+        assert row == 2
+        assert col == 1
+        assert np.allclose(np.array(trace.x), wl * 1e6)
+
+    _, y_kwargs = mock_fig.update_yaxes.call_args
+    assert y_kwargs["title"] == "Flux (arbitrary units)"
+    assert y_kwargs["row"] == 2
+    assert y_kwargs["col"] == 1
+    assert y_kwargs["domain"] == [0.58, 0.80]
+
+    _, x_kwargs = mock_fig.update_xaxes.call_args
+    assert x_kwargs["title"] == "Wavelength (µm)"
+    assert x_kwargs["title_standoff"] == 10
+    assert x_kwargs["row"] == 2
+    assert x_kwargs["col"] == 1
+    assert x_kwargs["range"] == [wl[-1] * 1e6, wl[0] * 1e6]
