@@ -546,6 +546,6 @@ def test_show_plot_writes_html(tmp_path):
 
     assert result is fig
     assert outfile.exists()
-    content = outfile.read_text()
+    content = outfile.read_text(encoding="utf-8")
     assert content.startswith("<html>")
     assert "plotly" in content.lower()
