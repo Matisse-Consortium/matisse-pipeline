@@ -271,6 +271,42 @@ def test_make_title_adds_annotation(mock_fig):
     assert kwargs["yref"] == "paper"
 
 
+def test_make_cp_plot_adds_closure_phase_trace(monkeypatch, mock_fig):
+    """
+    make_cp_plot must add a single Scatter trace with the configured color and legend.
+    """
+    monkeypatch.setattr(
+        vp.np.random, "randn", lambda *args, **kwargs: np.zeros(args[-1])
+    )
+
+    vp.make_cp_plot(mock_fig, row=5, baseline_name="A0-G0", col=2, color="#123456")
+
+    assert hasattr(mock_fig, "_added_traces")
+    assert len(mock_fig._added_traces) == 1
+    trace, row, col = mock_fig._added_traces[0]
+    assert row == 5
+    assert col == 2
+    assert isinstance(trace, go.Scatter)
+    assert trace.line.color == "#123456"
+    assert trace.mode == "lines"
+    assert trace.legendgroup == "cp"
+    assert trace.showlegend is True
+
+    # Axes configuration for closure plots
+    range_kwargs = next(
+        kwargs
+        for _, kwargs in mock_fig.update_yaxes.call_args_list
+        if "range" in kwargs
+    )
+    assert range_kwargs["row"] == 5
+    assert range_kwargs["col"] == 2
+    assert range_kwargs["range"] == [-190, 190]
+
+    title_kwargs = mock_fig.update_yaxes.call_args_list[-1][1]
+    assert title_kwargs["row"] == 5
+    assert title_kwargs["col"] == 2
+
+
 def test_plot_spectrum_adds_flux_traces(mock_fig):
     """
     plot_spectrum should add photometric bands, then append one Scatter trace
@@ -316,7 +352,7 @@ def test_plot_spectrum_adds_flux_traces(mock_fig):
         assert isinstance(trace, go.Scatter)
         assert row == 2
         assert col == 1
-        assert np.allclose(np.array(trace.x), wl * 1e6)
+    assert np.allclose(np.array(trace.x), wl * 1e6)
 
     _, y_kwargs = mock_fig.update_yaxes.call_args
     assert y_kwargs["title"] == "Flux (arbitrary units)"
@@ -330,3 +366,186 @@ def test_plot_spectrum_adds_flux_traces(mock_fig):
     assert x_kwargs["row"] == 2
     assert x_kwargs["col"] == 1
     assert x_kwargs["range"] == [wl[-1] * 1e6, wl[0] * 1e6]
+
+
+def test_make_vltiplot_mini_returns_lengths_and_layout(mock_fig):
+    """
+    make_vltiplot_mini should draw station markers, optional highlighted telescopes,
+    baseline segments, and return their lengths.
+    """
+    tels = ["A0", "U1"]
+    baseline_names = ["A0-U1"]
+    baseline_colors = ["#abcdef"]
+
+    lengths = vp.make_vltiplot_mini(
+        mock_fig,
+        row=2,
+        col=2,
+        title="VLTI Layout",
+        color="#EEEEEE",
+        tels=tels,
+        baseline_names=baseline_names,
+        baseline_colors=baseline_colors,
+    )
+
+    assert "A0-U1" in lengths
+    assert lengths["A0-U1"] > 0
+
+    # Ensure the dedicated baseline trace has been added
+    matching = [
+        trace
+        for trace, _, _ in getattr(mock_fig, "_added_traces", [])
+        if trace.name == "A0-U1" and trace.mode == "lines"
+    ]
+    assert matching, "Expected a line trace for baseline A0-U1"
+
+    mock_fig.add_annotation.assert_called_once()
+    args, kwargs = mock_fig.add_annotation.call_args
+    assert kwargs["text"] == "<b>VLTI LAYOUT</b>"
+
+
+def test_make_uvplot_adds_symmetrical_points(mock_fig):
+    """
+    make_uvplot should add +uv and -uv markers and configure axes symmetrically.
+    """
+    u_coords = [10.0, -12.0]
+    v_coords = [5.0, 8.0]
+    names = ["A0-G0", "A0-U1"]
+    colors = ["#111111", "#222222"]
+    lengths = {"A0-G0": 20.0, "A0-U1": 30.0}
+
+    vp.make_uvplot(
+        mock_fig,
+        u_coords=u_coords,
+        v_coords=v_coords,
+        array_type="UT",
+        baseline_names=names,
+        baseline_colors=colors,
+        bl_lengths=lengths,
+    )
+
+    assert hasattr(mock_fig, "_added_traces")
+    assert len(mock_fig._added_traces) == 4  # symmetric points
+
+    first_trace, row, col = mock_fig._added_traces[0]
+    assert isinstance(first_trace, go.Scatter)
+    assert first_trace.legendgroup == "uv"
+    assert first_trace.showlegend is True
+    assert row == 2 and col == 3
+    assert first_trace.marker.color == "#111111"
+    assert first_trace.name == "A0-G0 (20.0 m)"
+
+    # Check axes configuration
+    _, kwargs_x = mock_fig.update_xaxes.call_args
+    assert kwargs_x["title"] == "U (m)"
+    assert kwargs_x["domain"] == [0.75, 1.0]
+    y_kwargs = next(
+        kwargs
+        for _, kwargs in mock_fig.update_yaxes.call_args_list
+        if "title" in kwargs
+    )
+    assert y_kwargs["title"] == "V (m)"
+    assert y_kwargs["domain"] == [0.6, 0.85]
+
+
+def test_plot_obs_groups_single_group_with_errors(mock_fig):
+    """
+    plot_obs_groups should handle one exposure group and attach error bars when requested.
+    """
+    wl = np.array([3.0, 3.5, 4.0])
+    vis2 = np.array([[0.2, 0.3, 0.4], [0.5, 0.6, 0.7]])
+    vis2_err = np.array([[0.01, 0.02, 0.03], [0.02, 0.02, 0.02]])
+    flags = np.array([[False, True, False], [False, False, False]])
+    data = {
+        "WLEN": wl,
+        "VIS2": {
+            "VIS2": vis2,
+            "VIS2ERR": vis2_err,
+            "FLAG": flags,
+        },
+    }
+    baseline_names = ["A-B", "C-D"]
+    colors = ["#FF0000", "#00FF00"]
+
+    vp.plot_obs_groups(
+        mock_fig,
+        data,
+        baseline_names=baseline_names,
+        baseline_colors=colors,
+        show_errors=True,
+        obs_range=[0, 1],
+    )
+
+    traces = getattr(mock_fig, "_added_traces", [])
+    assert len(traces) == len(baseline_names)
+    for idx, ((trace, row, col), color) in enumerate(zip(traces, colors, strict=True)):
+        assert isinstance(trace, go.Scatter)
+        assert trace.line.color == color
+        assert trace.error_y is not None
+        assert row in (3, 4)
+        assert col == 1
+        assert len(trace.y) == int(np.sum(~flags[idx]))
+
+    # Ensure y-axis last call used provided range
+    _, y_kwargs = mock_fig.update_yaxes.call_args
+    assert y_kwargs["range"] == [0, 1]
+
+
+def test_plot_closure_groups_multiple_groups(mock_fig):
+    """
+    plot_closure_groups should iterate across triplets and exposure groups with fading opacity.
+    """
+    wl = np.array([3.0, 3.5, 4.0])
+    n_triplets = 2
+    n_groups = 4
+    n_series = n_triplets * n_groups
+    base = np.linspace(-30, 30, wl.size)
+    clos = np.stack([base + i for i in range(n_series)], axis=0)
+    clos_err = np.full_like(clos, 0.5)
+    flags = np.zeros_like(clos, dtype=bool)
+
+    data = {"WLEN": wl, "T3": {"CLOS": clos, "CLOSERR": clos_err, "FLAG": flags}}
+    triplet_names = ["ABC", "BCD"]
+    triplet_colors = ["#FFAA00", "#AA00FF"]
+
+    vp.plot_closure_groups(
+        mock_fig,
+        data,
+        triplet_names=triplet_names,
+        triplet_colors=triplet_colors,
+        show_errors=True,
+        obs_range=[-90, 90],
+    )
+
+    traces = getattr(mock_fig, "_added_traces", [])
+    assert len(traces) == n_series
+    # First two traces correspond to first triplet, first group, etc.
+    first_trace, row, col = traces[0]
+    assert row == 4
+    assert col == 3
+    assert isinstance(first_trace, go.Scatter)
+    assert first_trace.line.color == triplet_colors[0]
+    assert first_trace.opacity == 1.0
+    assert first_trace.error_y is not None
+
+    last_trace, _, _ = traces[-1]
+    assert last_trace.opacity == 0.1  # final alpha level for 4th group
+
+    _, y_kwargs = mock_fig.update_yaxes.call_args
+    assert y_kwargs["range"] == [-90, 90]
+
+
+def test_show_plot_writes_html(tmp_path):
+    """
+    show_plot should produce an HTML file when using the real write_html helper.
+    """
+    fig = go.Figure()
+    outfile = tmp_path / "viewer.html"
+
+    result = vp.show_plot(fig, filename=str(outfile), auto_open=False)
+
+    assert result is fig
+    assert outfile.exists()
+    content = outfile.read_text()
+    assert content.startswith("<html>")
+    assert "plotly" in content.lower()
