@@ -470,11 +470,8 @@ def make_table(
     # --- Convert to DataFrame ---
     if isinstance(data, dict):
         df = pd.DataFrame(list(data.items()), columns=["Parameter", "Value"])
-    elif isinstance(data, pd.DataFrame):
-        df = data.iloc[:, :2].copy()
-        df.columns = ["Parameter", "Value"]
     else:
-        raise TypeError("Input must be dict or pandas.DataFrame")
+        raise TypeError("Input must be dict.")
 
     # --- Filter by selected keys (case-insensitive) ---
     if keys is not None:
@@ -590,15 +587,6 @@ def plot_spectrum(fig, data):
             row=2,
             col=1,
         )
-
-    # add_photometric_bands(fig, row=2, col=1, ncols=3)
-
-    # add_vband_trace_auto(
-    #     fig, 4.6, 5.0, row=2, col=1, color="rgba(180,255,200,0.25)", name="M-band"
-    # )
-    # add_vband_trace_auto(
-    #     fig, 8.0, 13.0, row=2, col=1, color="rgba(255,200,150,0.25)", name="N-band"
-    # )
 
     wl_range = [lam[-1], lam[0]]
     fig.update_xaxes(
@@ -999,7 +987,7 @@ def plot_closure_groups(
     return fig
 
 
-def make_static_matisse_plot(data):
+def make_static_matisse_plot(data, mix_color: bool = False):
     meta = create_meta(data)
 
     quality = {}
@@ -1041,35 +1029,32 @@ def make_static_matisse_plot(data):
     cp_names = build_cpname_list(data)
 
     # Make title with informations
-    if True:
-        make_title(fig, meta)
+    make_title(fig, meta)
 
     # Block 1 - Metadata
-    if True:
-        make_table(
-            fig,
-            data=meta,
-            title="Meta Information",
-            color="#CFE4F8",
-            row=1,
-            col=1,
-            x_annot=0.08,
-            y_annot=1.04,
-            keys=["band", "disp", "bcd", "dit"],
-        )
+    make_table(
+        fig,
+        data=meta,
+        title="Meta Information",
+        color="#CFE4F8",
+        row=1,
+        col=1,
+        x_annot=0.08,
+        y_annot=1.04,
+        keys=["band", "disp", "bcd", "dit"],
+    )
 
     # Block 2 - Quality check
-    if True:
-        make_table(
-            fig,
-            data=quality,
-            title="Quality check",
-            color="#F8D5D7",
-            row=1,
-            col=3,
-            x_annot=0.89,
-            y_annot=1.04,
-        )
+    make_table(
+        fig,
+        data=quality,
+        title="Quality check",
+        color="#F8D5D7",
+        row=1,
+        col=3,
+        x_annot=0.89,
+        y_annot=1.04,
+    )
 
     sta_index = data["FLUX"]["STA_INDEX"]
     ref_station = {
@@ -1132,12 +1117,11 @@ def make_static_matisse_plot(data):
         obs_range=[-190, 190],
         col=2,
     )
-    mix_color = False
+
     if mix_color:
         cp_colors = mix_colors_for_closure(baseline_colors, baseline_names, cp_names)
     else:
         cp_colors = ["#FAA050", "#E0C9A6", "#BE7C7E", "#26AEB8"]
-        # cp_colors = ["#D898B9", "#96B89D", "#E0C9A6", "#A6BDE0"]
 
     plot_closure_groups(
         fig,
