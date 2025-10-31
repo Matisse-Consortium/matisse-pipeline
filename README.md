@@ -1,4 +1,8 @@
-# MATISSE Pipeline
+<!-- markdownlint-disable MD033 -->
+<p align="center">
+  <img src="docs/logo_pipeline_v6.png" alt="MATISSE-pipeline logo" width="280"/>
+</p>
+<!-- markdownlint-enable MD033 -->
 
 [![Status](https://img.shields.io/badge/status-Beta-orange.svg)](https://github.com/Matisse-Consortium/matisse-pipeline) [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue.svg)](https://www.python.org/) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
