@@ -104,7 +104,8 @@ matisse-pipeline/
 ├── src/matisse_pipeline/
 │   ├── cli.py                # Main CLI entry point (`mat`)
 │   ├── legacy/               # Legacy MATISSE reduction scripts
-│   └── core/                 # Core pipeline modules
+│   ├── core/                 # Core pipeline modules
+│   └── viewer/               # Viewer interface
 ├── tests/                    # Unit tests
 ├── pyproject.toml            # Project configuration (dependencies, groups, etc.)
 └── README.md
