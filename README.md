@@ -1,7 +1,10 @@
 # MATISSE Pipeline
 
-MATISSE Pipeline is a Python-based framework for the automated reduction and calibration of data from the **MATISSE interferometric instrument** (ESO/VLTI).
-It provides a modern, user-friendly command-line interface (`matisse`) as well as backward compatibility with the original consortium scripts located in `legacy/`.
+[![Status](https://img.shields.io/badge/status-Beta-orange.svg)](https://github.com/Matisse-Consortium/matisse-pipeline) [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue.svg)](https://www.python.org/) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+![CI](https://img.shields.io/badge/CI-GitHub%20Actions-blue?logo=githubactions) [![codecov](https://codecov.io/gh/Matisse-Consortium/matisse-pipeline/branch/main/graph/badge.svg)](https://codecov.io/gh/Matisse-Consortium/matisse-pipeline)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/charliermarsh/ruff/main/assets/badge/v2.json)](https://github.com/charliermarsh/ruff) [![Tests: Pytest](https://img.shields.io/badge/tests-pytest-blue.svg)](https://docs.pytest.org/en/stable/) [![Build with uv](https://img.shields.io/badge/build-uv-5A29E4.svg)](https://docs.astral.sh/uv/)
+
+Modern and modular **MATISSE** interferometric data-reduction pipeline python interface. Developed by the [MATISSE Consortium](https://www.eso.org/sci/facilities/paranal/instruments/matisse.html). It provides a user-friendly command-line interface (`matisse`) as well as backward compatibility with the original consortium scripts located in `legacy/`.
 
 ---
 
@@ -104,7 +107,8 @@ matisse-pipeline/
 ├── src/matisse_pipeline/
 │   ├── cli.py                # Main CLI entry point (`mat`)
 │   ├── legacy/               # Legacy MATISSE reduction scripts
-│   └── core/                 # Core pipeline modules
+│   ├── core/                 # Core pipeline modules
+│   └── viewer/               # Viewer interface
 ├── tests/                    # Unit tests
 ├── pyproject.toml            # Project configuration (dependencies, groups, etc.)
 └── README.md
