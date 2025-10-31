@@ -47,7 +47,7 @@ jobs:
     # -------------------
     - name: Run tests with coverage
       run: |
-        uv run --no-sync pytest --color=yes --cov=src/matisse_pipeline --cov-report=xml
+        run: uv run --no-sync pytest --color=yes
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v5

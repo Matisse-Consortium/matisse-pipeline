@@ -13,3 +13,6 @@ comment:
   require_changes: false
   require_base: yes
   require_head: yes
+
+ignore:
+- src/matisse_pipeline/legacy/**/*
