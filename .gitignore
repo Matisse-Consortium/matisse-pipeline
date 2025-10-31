@@ -21,4 +21,5 @@ src/matisse_pipeline/core/legacy/
 
 # Relative to coverage
 .coverage
+coverage.xml
 htmlcov/
