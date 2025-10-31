@@ -4,7 +4,8 @@
 
 [![CI](https://github.com/Matisse-Consortium/matisse-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/Matisse-Consortium/matisse-pipeline/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/Matisse-Consortium/matisse-pipeline/branch/main/graph/badge.svg?token=N2CINYUJBI)](https://codecov.io/gh/Matisse-Consortium/matisse-pipeline)
-[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/charliermarsh/ruff/main/assets/badge/v2.json)](https://github.com/charliermarsh/ruff) [![Tests: Pytest](https://img.shields.io/badge/tests-pytest-blue.svg)](https://docs.pytest.org/en/stable/) [![Build with uv](https://img.shields.io/badge/build-uv-5A29E4.svg)](https://docs.astral.sh/uv/)
+
+[![Build with uv](https://img.shields.io/badge/build-uv-5A29E4.svg)](https://docs.astral.sh/uv/) [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/charliermarsh/ruff/main/assets/badge/v2.json)](https://github.com/charliermarsh/ruff) [![Tests: Pytest](https://img.shields.io/badge/tests-pytest-blue.svg)](https://docs.pytest.org/en/stable/)
 
 Modern and modular **MATISSE** interferometric data-reduction pipeline python interface. Developed by the [MATISSE Consortium](https://www.eso.org/sci/facilities/paranal/instruments/matisse.html). It provides a user-friendly command-line interface (`matisse`) as well as backward compatibility with the original consortium scripts located in `legacy/`.
 
