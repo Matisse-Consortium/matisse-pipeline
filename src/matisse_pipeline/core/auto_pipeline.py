@@ -378,7 +378,7 @@ def run_pipeline(
                 "calib": [],
                 "status": 0,
                 "tplstart": " ",
-                "iter": iter_num,
+                "iter": iter_num + 1,
             }
             for _, iter_num in zip(keyTplStart, listIterNumber, strict=True)
         ]
@@ -521,12 +521,13 @@ def run_pipeline(
         skip_calib_iter = False
         for i_block, red_block in enumerate(list_red_blocks):
             rbname = red_block["recipes"] + "." + red_block["tplstart"]
+            rbname_safe = rbname.replace(":", "_")
             log.info(f"[cyan]Starting Block #{i_block + 1} : {rbname}")
             overwritei = overwrite
             if red_block["status"] == 1:
                 cptStatusOne += 1
-                sofname = os.path.join(repIter, rbname + ".sof").replace(":", "_")
-                outputDir = os.path.join(repIter, rbname + ".rb").replace(":", "_")
+                sofname = os.path.join(repIter, rbname_safe + ".sof")
+                outputDir = os.path.join(repIter, rbname_safe + ".rb")
                 print_sof_status = True
                 if overwritei == 0:
                     if glob.glob(
