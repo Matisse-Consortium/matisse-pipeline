@@ -74,6 +74,10 @@ exclude = ["src/matisse_pipeline/legacy"]
 [tool.pytest.ini_options]
 addopts = "--cov=src/matisse_pipeline --cov-report=xml --cov-report=term --cov-fail-under=0"
 testpaths = ["tests"]
+filterwarnings = [
+    "ignore:Keyword name 'ESO.*':astropy.io.fits.card.VerifyWarning",
+    "ignore:.*HIERARCH card will be created.*:astropy.io.fits.card.VerifyWarning",
+]
 
 [tool.coverage.run]
 omit = ["src/matisse_pipeline/legacy/*"]

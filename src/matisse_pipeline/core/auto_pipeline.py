@@ -1,28 +1,14 @@
-#!/usr/bin/env python3
 """
-This file is part of the Matisse pipeline GUI series
-Copyright (C) 2017- Observatoire de la Côte d'Azur
+Core helpers for the MATISSE pipeline GUI series.
 
 Created in 2016
-@author: pbe, fmi
+Authors: pbe, fmillour, ame
 
-Edited in 2025
-@contributor: aso
+Revised in 2025
+Contributor: aso
 
-Automatic MATISSE pipeline !
-
-Please contact florentin.millour@oca.eu for any question
-
-This software is governed by the CeCILL license under French law and
-abiding by the rules of distribution of free software.
-
-You can use, modify and/ or redistribute the software under the terms
-of the CeCILL license as circulated by CEA, CNRS and INRIA at the
-following URL "http://www.cecill.info". You have a copy of the licence
-in the LICENCE.md file.
-
-The fact that you are presently reading this means that you have had
-knowledge of the CeCILL license and that you accept its terms.
+This module exposes the core function of the  automatic
+MATISSE data reduction pipeline interface.
 """
 
 # import argparse
@@ -698,7 +684,8 @@ def run_pipeline(
             )
 
         # Add MDFC Fluxes to CALIB_RAW_INT and TARGET_RAW_INT
-        list_oifits_files = glob.glob(repIter + "/*.rb/*_RAW_INT*.fits")
+        # list_oifits_files = glob.glob(repIter + "/*.rb/*_RAW_INT*.fits")
+        list_oifits_files = glob.glob(repIter + "/*.rb/*.fits")
         for oifits_filename in list_oifits_files:
             hdu = fits.open(oifits_filename, mode="update")
             targetname = hdu[0].header["ESO OBS TARG NAME"]
