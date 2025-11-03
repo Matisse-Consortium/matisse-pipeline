@@ -1,28 +1,14 @@
-#!/usr/bin/env python3
 """
-This file is part of the Matisse pipeline GUI series
-Copyright (C) 2017- Observatoire de la Côte d'Azur
+Core helpers for the MATISSE pipeline GUI series.
 
 Created in 2016
-@author: pbe, fmi
+Authors: pbe, fmillour, ame
 
-Edited in 2025
-@contributor: aso
+Revised in 2025
+Contributor: aso
 
-Automatic MATISSE pipeline !
-
-Please contact florentin.millour@oca.eu for any question
-
-This software is governed by the CeCILL license under French law and
-abiding by the rules of distribution of free software.
-
-You can use, modify and/ or redistribute the software under the terms
-of the CeCILL license as circulated by CEA, CNRS and INRIA at the
-following URL "http://www.cecill.info". You have a copy of the licence
-in the LICENCE.md file.
-
-The fact that you are presently reading this means that you have had
-knowledge of the CeCILL license and that you accept its terms.
+This module exposes the core function of the  automatic
+MATISSE data reduction pipeline interface.
 """
 
 # import argparse
@@ -47,10 +33,10 @@ from rich.panel import Panel
 from rich.progress import Progress
 
 from matisse_pipeline.core.lib_auto_pipeline import (
-    matisseAction,
-    matisseCalib,
-    matisseRecipes,
-    matisseType,
+    matisse_action,
+    matisse_calib,
+    matisse_recipes,
+    matisse_type,
 )
 from matisse_pipeline.core.utils.common import remove_double_parameter
 from matisse_pipeline.core.utils.io_utils import resolve_raw_input
@@ -392,7 +378,7 @@ def run_pipeline(
                 "calib": [],
                 "status": 0,
                 "tplstart": " ",
-                "iter": iter_num,
+                "iter": iter_num + 1,
             }
             for _, iter_num in zip(keyTplStart, listIterNumber, strict=True)
         ]
@@ -410,7 +396,7 @@ def run_pipeline(
                 except Exception:
                     log.warning("{filename} is not a valid MATISSE fits file!")
                     continue
-            tag = matisseType(hdr)
+            tag = matisse_type(hdr)
             list_red_blocks[keyTplStart.index(stri)]["input"].append(
                 (filename, tag, hdr)
             )
@@ -427,13 +413,13 @@ def run_pipeline(
             if chip == "HAWAII-2RG":
                 resolution = hdr["HIERARCH ESO INS DIL NAME"]
 
-            action = matisseAction(hdr, red_block["input"][0][1])
+            action = matisse_action(hdr, red_block["input"][0][1])
 
             tel = ""
             if "TELESCOP" in hdr:
                 tel = hdr["TELESCOP"]
 
-            recipes, param = matisseRecipes(
+            recipes, param = matisse_recipes(
                 action, hdr["HIERARCH ESO DET CHIP NAME"], tel, resolution
             )
             red_block["action"] = action
@@ -485,7 +471,7 @@ def run_pipeline(
             )
             for red_block in list_red_blocks:
                 hdr = red_block["input"][0][2]
-                calib, status = matisseCalib(
+                calib, status = matisse_calib(
                     hdr,
                     red_block["action"],
                     listArchive,
@@ -502,7 +488,7 @@ def run_pipeline(
         if iterNumber > 1:
             for red_block in list_red_blocks:
                 hdr = red_block["input"][0][2]
-                calib, status = matisseCalib(
+                calib, status = matisse_calib(
                     hdr,
                     red_block["action"],
                     listIter,
@@ -535,12 +521,13 @@ def run_pipeline(
         skip_calib_iter = False
         for i_block, red_block in enumerate(list_red_blocks):
             rbname = red_block["recipes"] + "." + red_block["tplstart"]
+            rbname_safe = rbname.replace(":", "_")
             log.info(f"[cyan]Starting Block #{i_block + 1} : {rbname}")
             overwritei = overwrite
             if red_block["status"] == 1:
                 cptStatusOne += 1
-                sofname = os.path.join(repIter, rbname + ".sof").replace(":", ":")
-                outputDir = os.path.join(repIter, rbname + ".rb").replace(":", "_")
+                sofname = os.path.join(repIter, rbname_safe + ".sof")
+                outputDir = os.path.join(repIter, rbname_safe + ".rb")
                 print_sof_status = True
                 if overwritei == 0:
                     if glob.glob(

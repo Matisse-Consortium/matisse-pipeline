@@ -9,7 +9,7 @@ from pathlib import Path
 import plotly.io as pio
 import typer
 
-from matisse_pipeline.core.utils.io_utils import open_oifits
+from matisse_pipeline.core.utils.oifits_reader import open_oifits
 from matisse_pipeline.viewer import viewer_plotly
 
 

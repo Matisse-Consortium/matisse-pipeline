@@ -1,36 +1,28 @@
 """
-This file is part of the Matisse pipeline GUI series
-Copyright (C) 2017- Observatoire de la Côte d'Azur
+Core helpers for the MATISSE pipeline GUI series.
 
 Created in 2016
-@author: pbe, fmillour, ame
+Authors: pbe, fmillour, ame
 
-Automatic MATISSE pipeline library !
+Revised in 2025
+Contributor: aso
 
-Please contact florentin.millour@oca.eu for any question
-
-This software is a computer program whose purpose is to show oifits
-files from the MATISSE instrument.
-
-This software is governed by the CeCILL license under French law and
-abiding by the rules of distribution of free software.
-
-You can use, modify and/ or redistribute the software under the
-terms of the CeCILL license as circulated by CEA, CNRS and INRIA at
-the following URL "http://www.cecill.info". You have a copy of the
-licence in the LICENCE.md file.
-
-The fact that you are presently reading this means that you have had
-knowledge of the CeCILL license and that you accept its terms.
+This module exposes the high-level utilities used to classify FITS frames,
+match calibrations, and prepare recipe invocations for the automatic
+MATISSE data reduction pipeline.
 """
 
-from collections import Counter
+from collections.abc import Mapping, Sequence
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 from astropy.io import fits
 from astropy.io.fits import getheader
 from astropy.time import Time
+
+# Typing annotation (return of the matisse_calib function).
+CalibEntry = tuple[str, str]
 
 
 class headerCache:
@@ -66,8 +58,34 @@ class headerCache:
 cacheHdr = headerCache()
 
 
-def matisseCalib(header, action, listCalibFile, calibPrevious, tplstart):
-    """Check for calibration files and proceed with status and recipes for esorex."""
+def matisse_calib(
+    header: Mapping[str, Any],
+    action: str,
+    list_calib_file: Sequence[str],
+    calib_previous: list[CalibEntry],
+    tplstart: str,
+) -> tuple[list[CalibEntry], int]:
+    """Collect calibration frames matching the current observation metadata.
+
+    Parameters
+    ----------
+    header : Mapping[str, Any]
+        FITS header of the science frame currently being processed.
+    action : str
+        Pipeline action selected for the science frame.
+    list_calib_file : Sequence[str]
+        Paths to candidate calibration FITS files retrieved from the archive.
+    calib_previous : list[CalibEntry]
+        Calibration files already associated with the reduction block.
+    tplstart : str
+        Observation start timestamp (ISO UTC) of the science frame.
+
+    Returns
+    -------
+    tuple[list[CalibEntry], int]
+        Updated calibration list together with a status flag (1 when the set is
+        considered complete, 0 otherwise).
+    """
     global cacheHdr
 
     keyDetReadCurname = header["HIERARCH ESO DET READ CURNAME"]
@@ -84,17 +102,17 @@ def matisseCalib(header, action, listCalibFile, calibPrevious, tplstart):
     keyInsFinId = header["HIERARCH ESO INS FIN ID"]
     keyDetMtrh2 = header["HIERARCH ESO DET WIN MTRH2"]
     keyDetMtrs2 = header["HIERARCH ESO DET WIN MTRS2"]
-    res = calibPrevious
+    res: list[CalibEntry] = calib_previous
     if (
         action == "ACTION_MAT_CAL_DET_SLOW_SPEED"
         or action == "ACTION_MAT_CAL_DET_FAST_SPEED"
         or action == "ACTION_MAT_CAL_DET_LOW_GAIN"
         or action == "ACTION_MAT_CAL_DET_HIGH_GAIN"
     ):
-        return [res, 1]
+        return res, 1
 
     allhdr = []
-    for elt in listCalibFile:
+    for elt in list_calib_file:
         if elt not in cacheHdr:
             value = getheader(elt, 0)
             cacheHdr.update(elt, value)
@@ -110,12 +128,12 @@ def matisseCalib(header, action, listCalibFile, calibPrevious, tplstart):
         or action == "ACTION_MAT_IM_REM"
     ):
         nbCalib = 0
-        for elt in res:
-            if elt[1] == "BADPIX":
+        for entry in res:
+            if entry[1] == "BADPIX":
                 nbCalib += 1
 
-        for hdr, elt in zip(allhdr, listCalibFile, strict=False):
-            tagCalib = matisseType(hdr)
+        for hdr, elt in zip(allhdr, list_calib_file, strict=False):
+            tagCalib = matisse_type(hdr)
             if tagCalib == "BADPIX":
                 keyDetReadCurnameCalib = hdr["HIERARCH ESO DET READ CURNAME"]
                 keyTplStartCalib = hdr["HIERARCH ESO TPL START"]
@@ -145,24 +163,28 @@ def matisseCalib(header, action, listCalibFile, calibPrevious, tplstart):
                         mjd_tplstartprevious - mjd_tplstart
                     ):
                         del res[idx]
-                        res.append([elt, tagCalib])
+                        res.append((elt, tagCalib))
                 else:
-                    res.append([elt, tagCalib])
+                    res.append((elt, tagCalib))
                     nbCalib += 1
         if nbCalib == 1:
             status = 1
         else:
             status = 0
-        return [res, status]
+        return res, status
 
     if action == "ACTION_MAT_EST_FLAT":
         nbCalib = 0
-        for elt in res:
-            if elt[1] == "BADPIX" or elt[1] == "FLATFIELD" or elt[1] == "NONLINEARITY":
+        for entry in res:
+            if (
+                entry[1] == "BADPIX"
+                or entry[1] == "FLATFIELD"
+                or entry[1] == "NONLINEARITY"
+            ):
                 nbCalib += 1
 
-        for hdr, elt in zip(allhdr, listCalibFile, strict=False):
-            tagCalib = matisseType(hdr)
+        for hdr, elt in zip(allhdr, list_calib_file, strict=False):
+            tagCalib = matisse_type(hdr)
             if (
                 tagCalib == "BADPIX"
                 or tagCalib == "NONLINEARITY"
@@ -199,9 +221,9 @@ def matisseCalib(header, action, listCalibFile, calibPrevious, tplstart):
                         mjd_tplstartprevious - mjd_tplstart
                     ):
                         del res[idx]
-                        res.append([elt, tagCalib])
+                        res.append((elt, tagCalib))
                 else:
-                    res.append([elt, tagCalib])
+                    res.append((elt, tagCalib))
                     nbCalib += 1
             if tagCalib == "FLATFIELD" and (
                 (
@@ -234,9 +256,9 @@ def matisseCalib(header, action, listCalibFile, calibPrevious, tplstart):
                         mjd_tplstartprevious - mjd_tplstart
                     ):
                         del res[idx]
-                        res.append([elt, tagCalib])
+                        res.append((elt, tagCalib))
                 else:
-                    res.append([elt, tagCalib])
+                    res.append((elt, tagCalib))
                     nbCalib += 1
             if tagCalib == "NONLINEARITY" and (
                 (
@@ -269,9 +291,9 @@ def matisseCalib(header, action, listCalibFile, calibPrevious, tplstart):
                         mjd_tplstartprevious - mjd_tplstart
                     ):
                         del res[idx]
-                        res.append([elt, tagCalib])
+                        res.append((elt, tagCalib))
                 else:
-                    res.append([elt, tagCalib])
+                    res.append((elt, tagCalib))
                     nbCalib += 1
                 idx = -1
                 cpt = 0
@@ -291,31 +313,31 @@ def matisseCalib(header, action, listCalibFile, calibPrevious, tplstart):
                         mjd_tplstartprevious - mjd_tplstart
                     ):
                         del res[idx]
-                        res.append([elt, tagCalib])
+                        res.append((elt, tagCalib))
                 else:
-                    res.append([elt, tagCalib])
+                    res.append((elt, tagCalib))
                     nbCalib += 1
         if nbCalib == 3:
             status = 1
         else:
             status = 0
-        return [res, status]
+        return res, status
 
     if action == "ACTION_MAT_RAW_ESTIMATES":
         nbCalib = 0
-        for elt in res:
+        for entry in res:
             if (
-                elt[1] == "BADPIX"
-                or elt[1] == "OBS_FLATFIELD"
-                or elt[1] == "NONLINEARITY"
-                or elt[1] == "SHIFT_MAP"
-                or elt[1] == "KAPPA_MATRIX"
+                entry[1] == "BADPIX"
+                or entry[1] == "OBS_FLATFIELD"
+                or entry[1] == "NONLINEARITY"
+                or entry[1] == "SHIFT_MAP"
+                or entry[1] == "KAPPA_MATRIX"
             ):
                 nbCalib += 1
 
         list_file_calib_found = []
-        for hdr, elt in zip(allhdr, listCalibFile, strict=False):
-            tagCalib = matisseType(hdr)
+        for hdr, elt in zip(allhdr, list_calib_file, strict=False):
+            tagCalib = matisse_type(hdr)
             if (
                 tagCalib == "BADPIX"
                 or tagCalib == "OBS_FLATFIELD"
@@ -340,7 +362,7 @@ def matisseCalib(header, action, listCalibFile, calibPrevious, tplstart):
                 time_tplstartcalib = Time(keyTplStartCalib, format="isot", scale="utc")
                 mjd_tplstartcalib = time_tplstartcalib.mjd
 
-                list_file_calib_found.append([Path(elt).name, tagCalib])
+                list_file_calib_found.append((Path(elt).name, tagCalib))
 
             if tagCalib == "BADPIX" and (
                 keyDetReadCurnameCalib == keyDetReadCurname
@@ -364,9 +386,9 @@ def matisseCalib(header, action, listCalibFile, calibPrevious, tplstart):
                         mjd_tplstartprevious - mjd_tplstart
                     ):
                         del res[idx]
-                        res.append([elt, tagCalib])
+                        res.append((elt, tagCalib))
                 else:
-                    res.append([elt, tagCalib])
+                    res.append((elt, tagCalib))
                     nbCalib += 1
 
             if tagCalib == "OBS_FLATFIELD" and (
@@ -416,9 +438,9 @@ def matisseCalib(header, action, listCalibFile, calibPrevious, tplstart):
                         mjd_tplstartprevious - mjd_tplstart
                     ):
                         del res[idx]
-                        res.append([elt, tagCalib])
+                        res.append((elt, tagCalib))
                 else:
-                    res.append([elt, tagCalib])
+                    res.append((elt, tagCalib))
                     nbCalib += 1
 
             if tagCalib == "NONLINEARITY" and (
@@ -455,9 +477,9 @@ def matisseCalib(header, action, listCalibFile, calibPrevious, tplstart):
                         mjd_tplstartprevious - mjd_tplstart
                     ):
                         del res[idx]
-                        res.append([elt, tagCalib])
+                        res.append((elt, tagCalib))
                 else:
-                    res.append([elt, tagCalib])
+                    res.append((elt, tagCalib))
                     nbCalib += 1
 
             if tagCalib == "SHIFT_MAP" and (
@@ -497,9 +519,9 @@ def matisseCalib(header, action, listCalibFile, calibPrevious, tplstart):
                         mjd_tplstartprevious - mjd_tplstart
                     ):
                         del res[idx]
-                        res.append([elt, tagCalib])
+                        res.append((elt, tagCalib))
                 else:
-                    res.append([elt, tagCalib])
+                    res.append((elt, tagCalib))
                     nbCalib += 1
 
             if tagCalib == "KAPPA_MATRIX" and (
@@ -538,9 +560,9 @@ def matisseCalib(header, action, listCalibFile, calibPrevious, tplstart):
                         mjd_tplstartprevious - mjd_tplstart
                     ):
                         del res[idx]
-                        res.append([elt, tagCalib])
+                        res.append((elt, tagCalib))
                 else:
-                    res.append([elt, tagCalib])
+                    res.append((elt, tagCalib))
                     nbCalib += 1
 
             if tagCalib == "JSDC_CAT":
@@ -551,7 +573,7 @@ def matisseCalib(header, action, listCalibFile, calibPrevious, tplstart):
                         idx = cpt
                     cpt += 1
                 if idx == -1:
-                    res.append([elt, tagCalib])
+                    res.append((elt, tagCalib))
 
         # Chech if all calibration files are present
         if (keyDetChipName == "AQUARIUS" and keyInsPinId == "PHOTO") or (
@@ -568,20 +590,20 @@ def matisseCalib(header, action, listCalibFile, calibPrevious, tplstart):
                 status = 1
             else:
                 status = 0
-        return [res, status]
+        return res, status
 
     if action == "ACTION_MAT_EST_KAPPA":
         nbCalib = 0
-        for elt in res:
+        for entry in res:
             if (
-                elt[1] == "BADPIX"
-                or elt[1] == "OBS_FLATFIELD"
-                or elt[1] == "NONLINEARITY"
-                or elt[1] == "SHIFT_MAP"
+                entry[1] == "BADPIX"
+                or entry[1] == "OBS_FLATFIELD"
+                or entry[1] == "NONLINEARITY"
+                or entry[1] == "SHIFT_MAP"
             ):
                 nbCalib += 1
-        for hdr, elt in zip(allhdr, listCalibFile, strict=False):
-            tagCalib = matisseType(hdr)
+        for hdr, elt in zip(allhdr, list_calib_file, strict=False):
+            tagCalib = matisse_type(hdr)
             if (
                 tagCalib == "BADPIX"
                 or tagCalib == "NONLINEARITY"
@@ -625,9 +647,9 @@ def matisseCalib(header, action, listCalibFile, calibPrevious, tplstart):
                         mjd_tplstartprevious - mjd_tplstart
                     ):
                         del res[idx]
-                        res.append([elt, tagCalib])
+                        res.append((elt, tagCalib))
                 else:
-                    res.append([elt, tagCalib])
+                    res.append((elt, tagCalib))
                     nbCalib += 1
 
             if tagCalib == "OBS_FLATFIELD" and (
@@ -665,9 +687,9 @@ def matisseCalib(header, action, listCalibFile, calibPrevious, tplstart):
                         mjd_tplstartprevious - mjd_tplstart
                     ):
                         del res[idx]
-                        res.append([elt, tagCalib])
+                        res.append((elt, tagCalib))
                 else:
-                    res.append([elt, tagCalib])
+                    res.append((elt, tagCalib))
                     nbCalib += 1
 
             if tagCalib == "NONLINEARITY" and (
@@ -701,9 +723,9 @@ def matisseCalib(header, action, listCalibFile, calibPrevious, tplstart):
                         mjd_tplstartprevious - mjd_tplstart
                     ):
                         del res[idx]
-                        res.append([elt, tagCalib])
+                        res.append((elt, tagCalib))
                 else:
-                    res.append([elt, tagCalib])
+                    res.append((elt, tagCalib))
                     nbCalib += 1
 
             if tagCalib == "SHIFT_MAP" and (
@@ -746,28 +768,28 @@ def matisseCalib(header, action, listCalibFile, calibPrevious, tplstart):
                         mjd_tplstartprevious - mjd_tplstart
                     ):
                         del res[idx]
-                        res.append([elt, tagCalib])
+                        res.append((elt, tagCalib))
                         # print('elt = ',elt)
                 else:
-                    res.append([elt, tagCalib])
+                    res.append((elt, tagCalib))
                     nbCalib += 1
         if nbCalib == 4:
             status = 1
         else:
             status = 0
-        return [res, status]
+        return res, status
 
     if action == "ACTION_MAT_EST_SHIFT":
         nbCalib = 0
-        for elt in res:
+        for entry in res:
             if (
-                elt[1] == "BADPIX"
-                or elt[1] == "OBS_FLATFIELD"
-                or elt[1] == "NONLINEARITY"
+                entry[1] == "BADPIX"
+                or entry[1] == "OBS_FLATFIELD"
+                or entry[1] == "NONLINEARITY"
             ):
                 nbCalib += 1
-        for hdr, elt in zip(allhdr, listCalibFile, strict=False):
-            tagCalib = matisseType(hdr)
+        for hdr, elt in zip(allhdr, list_calib_file, strict=False):
+            tagCalib = matisse_type(hdr)
             if (
                 tagCalib == "BADPIX"
                 or tagCalib == "NONLINEARITY"
@@ -810,9 +832,9 @@ def matisseCalib(header, action, listCalibFile, calibPrevious, tplstart):
                         mjd_tplstartprevious - mjd_tplstart
                     ):
                         del res[idx]
-                        res.append([elt, tagCalib])
+                        res.append((elt, tagCalib))
                 else:
-                    res.append([elt, tagCalib])
+                    res.append((elt, tagCalib))
                     nbCalib += 1
 
             if tagCalib == "OBS_FLATFIELD" and (
@@ -850,9 +872,9 @@ def matisseCalib(header, action, listCalibFile, calibPrevious, tplstart):
                         mjd_tplstartprevious - mjd_tplstart
                     ):
                         del res[idx]
-                        res.append([elt, tagCalib])
+                        res.append((elt, tagCalib))
                 else:
-                    res.append([elt, tagCalib])
+                    res.append((elt, tagCalib))
                     nbCalib += 1
             if tagCalib == "NONLINEARITY" and (
                 (
@@ -885,20 +907,39 @@ def matisseCalib(header, action, listCalibFile, calibPrevious, tplstart):
                         mjd_tplstartprevious - mjd_tplstart
                     ):
                         del res[idx]
-                        res.append([elt, tagCalib])
+                        res.append((elt, tagCalib))
                 else:
-                    res.append([elt, tagCalib])
+                    res.append((elt, tagCalib))
                     nbCalib += 1
         if nbCalib == 3:
             status = 1
         else:
             status = 0
-        return [res, status]
+        return res, status
 
-    return [res, 0]
+    return res, 0
 
 
-def matisseRecipes(action, det, tel, resol):
+def matisse_recipes(action: str, det: str, tel: str, resol: str) -> list[str]:
+    """Return the recipe command name and options for a given action and context.
+
+    Parameters
+    ----------
+    action : str
+        Pipeline action identifier, typically produced by ``matisse_action``.
+    det : str
+        Detector name carried by the FITS header, used to refine raw estimates.
+    tel : str
+        Telescope configuration; only relevant for some raw-estimate actions.
+    resol : str
+        Spectral resolution (currently unused but kept for signature parity).
+
+    Returns
+    -------
+    list[str]
+        Two-element list containing the recipe executable name and its CLI
+        options. Returns ``["", ""]`` when the action is unknown.
+    """
     if action == "ACTION_MAT_CAL_DET_SLOW_SPEED":
         return [
             "mat_cal_det",
@@ -948,7 +989,24 @@ def matisseRecipes(action, det, tel, resol):
     return ["", ""]
 
 
-def matisseAction(header, tag):
+def matisse_action(header: Mapping[str, Any], tag: str) -> str:
+    """Return the MATISSE pipeline action name for the given header and tag.
+
+    Parameters
+    ----------
+    header : Mapping[str, Any]
+        FITS header describing the frame. For detector calibration frames the
+        keys ``HIERARCH ESO DET NAME`` and ``HIERARCH ESO DET READ CURNAME`` are
+        expected to be present.
+    tag : str
+        Higher level classification derived from the FITS metadata.
+
+    Returns
+    -------
+    str
+        The action identifier understood by the pipeline, or ``NO-ACTION`` when
+        nothing matches.
+    """
     keyDetName = header["HIERARCH ESO DET NAME"]
     keyDetReadCurname = header["HIERARCH ESO DET READ CURNAME"]
 
@@ -976,6 +1034,7 @@ def matisseAction(header, tag):
         and keyDetReadCurname == "SCI-HIGH-GAIN"
     ):
         return "ACTION_MAT_CAL_DET_HIGH_GAIN"
+
     if tag == "OBSDARK" or tag == "OBSFLAT":
         return "ACTION_MAT_EST_FLAT"
     if (
@@ -1009,11 +1068,25 @@ def matisseAction(header, tag):
     return "NO-ACTION"
 
 
-def matisseType(header):
-    res = ""
-    catg = None
-    typ = None
-    tech = None
+def matisse_type(header: Mapping[str, Any]) -> str:
+    """Map the FITS header metadata to a MATISSE higher level frame type.
+
+    Parameters
+    ----------
+    header : fits.Header
+        FITS header provided by the instrument; relevant category/type/technique
+        keys from the ``HIERARCH ESO`` namespace are expected to be present.
+
+    Returns
+    -------
+    str
+        Canonical frame tag consumed by the MATISSE pipeline. Falls back to the
+        ``catg`` value when no explicit mapping is found.
+    """
+    res: str = ""
+    catg: str | None = None
+    typ: str | None = None
+    tech: str | None = None
     try:
         catg = header["HIERARCH ESO PRO CATG"]
     except KeyError:
@@ -1121,34 +1194,5 @@ def matisseType(header):
     ):
         res = "SKY_RAW"
     else:
-        res = catg
+        res = catg or ""
     return res
-
-
-def find_unique_fits(list_of_lists):
-    """
-    Return FITS files appearing once in the list_of_lists with
-    their respective tag.
-    """
-    # Flat the list
-    flat = []
-    for sublist in list_of_lists:
-        for pair in sublist:
-            if isinstance(pair, list) and len(pair) == 2:
-                flat.append(pair)
-
-    # Counts interation
-    counts = Counter(path for path, _ in flat)
-
-    # Keep unique ones
-    uniques = [(path, tag) for path, tag in flat if counts[path] == 1]
-
-    # Delete double entrance
-    seen = set()
-    result = []
-    for path, tag in uniques:
-        if path not in seen:
-            seen.add(path)
-            result.append((path, tag))
-
-    return result

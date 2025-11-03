@@ -175,3 +175,33 @@ def mock_fig():
     fig.layout.annotations = []
 
     return fig
+
+
+@pytest.fixture(scope="session")
+def data_dir() -> Path:
+    """Return the path to the test data directory."""
+    return Path(__file__).parent / "data"
+
+
+@pytest.fixture(scope="session")
+def real_obs_target(data_dir: Path) -> Path:
+    """Return the path to the target real observation FITS file."""
+    return data_dir / "MATIS_target_raw.fits"
+
+
+@pytest.fixture(scope="session")
+def real_obs_calib(data_dir: Path) -> Path:
+    """Return the path to the calibrator real observation FITS file."""
+    return data_dir / "MATIS_calib_raw.fits"
+
+
+@pytest.fixture(scope="session")
+def real_obs_sky(data_dir: Path) -> Path:
+    """Return the path to the sky real observation FITS file."""
+    return data_dir / "MATIS_sky_raw.fits"
+
+
+@pytest.fixture(scope="session")
+def real_oifits(data_dir: Path) -> Path:
+    """Return the path to the real reduced observation FITS file."""
+    return data_dir / "real_data1.fits"

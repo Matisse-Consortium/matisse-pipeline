@@ -435,7 +435,7 @@ def mat_autoPipeline(
 
                 filelist = os.listdir(repIter)
                 rbname = elt["recipes"] + "." + elt["tplstart"]
-                sofname = os.path.join(repIter, rbname + ".sof").replace(":", ":")
+                sofname = os.path.join(repIter, rbname + ".sof").replace(":", "_")
                 outputDir = os.path.join(repIter, rbname + ".rb").replace(":", "_")
 
                 if overwritei == 0:
