@@ -301,7 +301,7 @@ def test_run_pipeline_writes_sof_and_invokes_esorex(tmp_path, monkeypatch):
     )
 
     iter_dir = result_dir / "Iter1"
-    sof_path = iter_dir / "mat_im_basic.2025-01-02T00:00:00.HAWAII-2RG.sof"
+    sof_path = iter_dir / "mat_im_basic.2025-01-02T00_00_00.HAWAII-2RG.sof"
     output_dir = iter_dir / "mat_im_basic.2025-01-02T00_00_00.HAWAII-2RG.rb"
 
     assert sof_path.exists(), "expected sof file to be created"
