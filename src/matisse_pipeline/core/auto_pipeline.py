@@ -684,8 +684,7 @@ def run_pipeline(
             )
 
         # Add MDFC Fluxes to CALIB_RAW_INT and TARGET_RAW_INT
-        # list_oifits_files = glob.glob(repIter + "/*.rb/*_RAW_INT*.fits")
-        list_oifits_files = glob.glob(repIter + "/*.rb/*.fits")
+        list_oifits_files = glob.glob(repIter + "/*.rb/*_RAW_INT*.fits")
         for oifits_filename in list_oifits_files:
             hdu = fits.open(oifits_filename, mode="update")
             targetname = hdu[0].header["ESO OBS TARG NAME"]

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import io
+import json
 import logging
 from pathlib import Path
 
@@ -50,7 +51,7 @@ def test_resolve_raw_input_json_and_dedup(tmp_path):
     file_a.touch()
     file_b.touch()
 
-    spec = f'["{file_a}", "{file_a}", "{file_b}"]'
+    spec = json.dumps([str(file_a), str(file_a), str(file_b)])
     files, source = io_utils.resolve_raw_input(spec)
 
     assert source == "JSON list"
