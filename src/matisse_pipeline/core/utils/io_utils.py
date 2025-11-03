@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 from astropy.io import fits
 
-from matisse_pipeline.core.lib_auto_pipeline import matisseType
+from matisse_pipeline.core.lib_auto_pipeline import matisse_type
 from matisse_pipeline.core.utils.log_utils import log
 
 
@@ -118,7 +118,7 @@ def resolve_raw_input(raw_spec: str | Sequence[str]) -> tuple[list[Path], str]:
 
 def check_for_calib_file(allhdr):
     for hdr in allhdr:
-        tagCalib = matisseType(hdr)
+        tagCalib = matisse_type(hdr)
         print(tagCalib)
 
 

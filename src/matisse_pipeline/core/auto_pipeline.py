@@ -47,10 +47,10 @@ from rich.panel import Panel
 from rich.progress import Progress
 
 from matisse_pipeline.core.lib_auto_pipeline import (
-    matisseAction,
-    matisseCalib,
-    matisseRecipes,
-    matisseType,
+    matisse_action,
+    matisse_calib,
+    matisse_recipes,
+    matisse_type,
 )
 from matisse_pipeline.core.utils.common import remove_double_parameter
 from matisse_pipeline.core.utils.io_utils import resolve_raw_input
@@ -410,7 +410,7 @@ def run_pipeline(
                 except Exception:
                     log.warning("{filename} is not a valid MATISSE fits file!")
                     continue
-            tag = matisseType(hdr)
+            tag = matisse_type(hdr)
             list_red_blocks[keyTplStart.index(stri)]["input"].append(
                 (filename, tag, hdr)
             )
@@ -427,13 +427,13 @@ def run_pipeline(
             if chip == "HAWAII-2RG":
                 resolution = hdr["HIERARCH ESO INS DIL NAME"]
 
-            action = matisseAction(hdr, red_block["input"][0][1])
+            action = matisse_action(hdr, red_block["input"][0][1])
 
             tel = ""
             if "TELESCOP" in hdr:
                 tel = hdr["TELESCOP"]
 
-            recipes, param = matisseRecipes(
+            recipes, param = matisse_recipes(
                 action, hdr["HIERARCH ESO DET CHIP NAME"], tel, resolution
             )
             red_block["action"] = action
@@ -485,7 +485,7 @@ def run_pipeline(
             )
             for red_block in list_red_blocks:
                 hdr = red_block["input"][0][2]
-                calib, status = matisseCalib(
+                calib, status = matisse_calib(
                     hdr,
                     red_block["action"],
                     listArchive,
@@ -502,7 +502,7 @@ def run_pipeline(
         if iterNumber > 1:
             for red_block in list_red_blocks:
                 hdr = red_block["input"][0][2]
-                calib, status = matisseCalib(
+                calib, status = matisse_calib(
                     hdr,
                     red_block["action"],
                     listIter,
