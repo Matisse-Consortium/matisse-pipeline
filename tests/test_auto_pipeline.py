@@ -162,10 +162,6 @@ def test_run_pipeline_check_calibration_summary(tmp_path, monkeypatch):
     assert block["status"] == 1
 
 
-# @pytest.mark.skipif(
-#     sys.platform.startswith("win"),
-#     reason="ESO pipeline uses ':' in filenames on Windows",
-# )
 def test_run_pipeline_writes_sof_and_invokes_esorex(tmp_path, monkeypatch):
     raw_dir = tmp_path / "raw"
     calib_dir = tmp_path / "calib"

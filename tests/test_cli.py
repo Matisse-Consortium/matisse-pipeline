@@ -2,6 +2,7 @@ import subprocess
 
 from typer.testing import CliRunner
 
+from matisse_pipeline.cli import format_results as format_module
 from matisse_pipeline.cli.main import app
 
 runner = CliRunner()
@@ -96,3 +97,47 @@ def test_matisse_format_with_fake_file(tmp_path, caplog):
     assert any("Tidyup complete" in rec.message for rec in caplog.records), (
         f"Missing success message in logs: {[r.message for r in caplog.records]}"
     )
+
+
+def test_format_cli_missing_directory(tmp_path, caplog):
+    missing_dir = tmp_path / "does_not_exist"
+
+    with caplog.at_level("ERROR"):
+        result = runner.invoke(
+            app,
+            ["format", str(missing_dir)],
+            catch_exceptions=False,
+        )
+
+    assert result.exit_code == 1
+    assert any(str(missing_dir) in record.message for record in caplog.records), (
+        "Expected error log referencing missing directory."
+    )
+
+
+def test_format_cli_invokes_tidyup_with_verbose_flag(tmp_path, monkeypatch):
+    target_dir = tmp_path / "Iter3"
+    target_dir.mkdir()
+    # File content is irrelevant; command should only forward the path.
+    (target_dir / "placeholder.fits").write_text("DATA")
+
+    calls = {"tidyup": None, "verbosity": []}
+
+    def fake_tidyup(path):
+        calls["tidyup"] = path
+
+    def fake_set_verbosity(logger, verbose):
+        calls["verbosity"].append(verbose)
+
+    monkeypatch.setattr(format_module, "tidyup_path", fake_tidyup)
+    monkeypatch.setattr(format_module, "set_verbosity", fake_set_verbosity)
+
+    result = runner.invoke(
+        app,
+        ["format", "-v", str(target_dir)],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 0
+    assert calls["tidyup"] == target_dir
+    assert calls["verbosity"] == [True]
