@@ -43,7 +43,38 @@ def _write_fits(path: Path, **header_values):
     hdu.writeto(path, overwrite=True)
 
 
-def test_run_pipeline_check_calibration_summary(tmp_path, monkeypatch):
+@pytest.mark.parametrize(
+    "detector_overrides",
+    [
+        pytest.param(
+            {
+                "HIERARCH ESO DET NAME": "MATISSE-LM",
+                "HIERARCH ESO DET CHIP NAME": "HAWAII-2RG",
+                "HIERARCH ESO DET READ CURNAME": "SCI-SLOW-SPEED",
+                "HIERARCH ESO INS PIL ID": "PHOTO",
+                "HIERARCH ESO INS PIN ID": "PHOTO",
+                "HIERARCH ESO INS DIL NAME": "LOW",
+                "HIERARCH ESO INS DIN NAME": "LOW",
+            },
+            id="hawaii-2rg",
+        ),
+        pytest.param(
+            {
+                "HIERARCH ESO DET NAME": "MATISSE-N",
+                "HIERARCH ESO DET CHIP NAME": "AQUARIUS",
+                "HIERARCH ESO DET READ CURNAME": "SCI-FAST-SPEED",
+                "HIERARCH ESO INS PIL ID": "PHOTO",
+                "HIERARCH ESO INS PIN ID": "PHOTO",
+                "HIERARCH ESO INS DIL NAME": "LOW",
+                "HIERARCH ESO INS DIN NAME": "LOW",
+            },
+            id="aquarius",
+        ),
+    ],
+)
+def test_run_pipeline_check_calibration_summary(
+    tmp_path, monkeypatch, detector_overrides
+):
     raw_dir = tmp_path / "raw"
     calib_dir = tmp_path / "calib"
     result_dir = tmp_path / "results"
@@ -94,8 +125,10 @@ def test_run_pipeline_check_calibration_summary(tmp_path, monkeypatch):
         "HIERARCH ESO TPL START": "2025-01-01T00:00:00",
         "HIERARCH ESO TPL ID": "TPL1",
         "HIERARCH ESO INS DIL NAME": "LOW",
+        "HIERARCH ESO INS DIN NAME": "LOW",
         "ESO OBS TARG NAME": "TARGET-STAR",
     }
+    raw_header.update(detector_overrides)
 
     raw_path = raw_dir / "MATIS_RAW001.fits"
     _write_fits(raw_path, **raw_header)
@@ -117,6 +150,8 @@ def test_run_pipeline_check_calibration_summary(tmp_path, monkeypatch):
             "HIERARCH ESO INS FIN ID",
             "HIERARCH ESO DET WIN MTRH2",
             "HIERARCH ESO DET WIN MTRS2",
+            "HIERARCH ESO INS DIL NAME",
+            "HIERARCH ESO INS DIN NAME",
         ]
     }
 
@@ -325,3 +360,165 @@ def test_run_pipeline_exits_when_no_raw(monkeypatch):
         auto_pipeline.run_pipeline(dirRaw="/does/not/exist")
 
     assert excinfo.value.code == 1
+
+
+def test_run_pipeline_uses_previous_iteration_outputs(tmp_path, monkeypatch):
+    raw_dir = tmp_path / "raw"
+    calib_dir = tmp_path / "calib"
+    result_dir = tmp_path / "results"
+    result_dir.mkdir(parents=True, exist_ok=True)
+
+    capture_stream = io.StringIO()
+    test_console = Console(file=capture_stream, force_terminal=False)
+
+    monkeypatch.setattr(auto_pipeline, "console", test_console)
+    monkeypatch.setattr(log_utils, "console", test_console)
+
+    monkeypatch.setattr(auto_pipeline, "Progress", _DummyProgress)
+    monkeypatch.setattr(auto_pipeline, "Vizier", _DummyVizier)
+
+    class _DummyLock:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    class _DummyManager:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def Lock(self):
+            return _DummyLock()
+
+    class _DummyPool:
+        def __init__(self, processes):
+            self.processes = processes
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def map(self, func, tasks):
+            return [func(task) for task in tasks]
+
+    monkeypatch.setattr(auto_pipeline, "Manager", lambda: _DummyManager())
+    monkeypatch.setattr(auto_pipeline, "Pool", _DummyPool)
+
+    def fake_run_esorex(args):
+        cmd, block_index, _lock = args
+        output_dir = None
+        for part in cmd.split():
+            if part.startswith("--output-dir="):
+                output_dir = Path(part.split("=", 1)[1])
+                break
+
+        assert output_dir is not None
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        oifits_path = output_dir / f"TARGET_RAW_INT_{block_index:03d}.fits"
+        hdu = fits.PrimaryHDU()
+        hdu.header["ESO OBS TARG NAME"] = "TARGET-STAR"
+        hdu.writeto(oifits_path, overwrite=True)
+
+        return block_index, True
+
+    monkeypatch.setattr(auto_pipeline, "run_esorex", fake_run_esorex)
+
+    raw_header = {
+        "HIERARCH ESO DPR CATG": "SCIENCE",
+        "HIERARCH ESO DPR TYPE": "OBJECT",
+        "HIERARCH ESO DPR TECH": "INTERFEROMETRY",
+        "HIERARCH ESO DPR SEQ": "SEQ",
+        "HIERARCH ESO DET NAME": "MATISSE-LM",
+        "HIERARCH ESO DET READ CURNAME": "SCI-SLOW-SPEED",
+        "HIERARCH ESO DET CHIP NAME": "HAWAII-2RG",
+        "HIERARCH ESO DET SEQ1 DIT": 0.1,
+        "HIERARCH ESO DET SEQ1 PERIOD": 0.2,
+        "HIERARCH ESO INS PIL ID": "PHOTO",
+        "HIERARCH ESO INS PIN ID": "PHOTO",
+        "HIERARCH ESO INS DIL ID": "LOW",
+        "HIERARCH ESO INS DIN ID": "LOW",
+        "HIERARCH ESO INS POL ID": "POL",
+        "HIERARCH ESO INS FIL ID": "FILTER",
+        "HIERARCH ESO INS PON ID": "PON",
+        "HIERARCH ESO INS FIN ID": "FIN",
+        "HIERARCH ESO DET WIN MTRH2": 1.0,
+        "HIERARCH ESO DET WIN MTRS2": 1.0,
+        "HIERARCH ESO TPL START": "2025-01-01T00:00:00",
+        "HIERARCH ESO TPL ID": "TPL1",
+        "HIERARCH ESO INS DIL NAME": "LOW",
+        "HIERARCH ESO INS DIN NAME": "LOW",
+        "ESO OBS TARG NAME": "TARGET-STAR",
+    }
+
+    raw_path = raw_dir / "MATIS_RAW001.fits"
+    _write_fits(raw_path, **raw_header)
+
+    common = {
+        key: raw_header[key]
+        for key in [
+            "HIERARCH ESO DET READ CURNAME",
+            "HIERARCH ESO DET CHIP NAME",
+            "HIERARCH ESO DET SEQ1 DIT",
+            "HIERARCH ESO DET SEQ1 PERIOD",
+            "HIERARCH ESO INS PIL ID",
+            "HIERARCH ESO INS PIN ID",
+            "HIERARCH ESO INS DIL ID",
+            "HIERARCH ESO INS DIN ID",
+            "HIERARCH ESO INS POL ID",
+            "HIERARCH ESO INS FIL ID",
+            "HIERARCH ESO INS PON ID",
+            "HIERARCH ESO INS FIN ID",
+            "HIERARCH ESO DET WIN MTRH2",
+            "HIERARCH ESO DET WIN MTRS2",
+            "HIERARCH ESO INS DIL NAME",
+            "HIERARCH ESO INS DIN NAME",
+        ]
+    }
+
+    calib_specs = [
+        ("badpix.fits", "BADPIX", "2025-01-01T00:10:00"),
+        ("obs_flatfield.fits", "OBS_FLATFIELD", "2025-01-01T00:12:00"),
+        ("nonlinearity.fits", "NONLINEARITY", "2025-01-01T00:14:00"),
+        ("shift_map.fits", "SHIFT_MAP", "2025-01-01T00:16:00"),
+        ("kappa_matrix.fits", "KAPPA_MATRIX", "2025-01-01T00:18:00"),
+    ]
+
+    for filename, catg, tpl_start in calib_specs:
+        _write_fits(
+            calib_dir / filename,
+            **{
+                **common,
+                "HIERARCH ESO PRO CATG": catg,
+                "HIERARCH ESO TPL START": tpl_start,
+            },
+        )
+
+    captured_sources: list[list[str]] = []
+    original_matisse_calib = auto_pipeline.matisse_calib
+
+    def spy_matisse_calib(header, action, list_calib_file, calib_previous, tplstart):
+        captured_sources.append(list(list_calib_file))
+        return original_matisse_calib(
+            header, action, list_calib_file, calib_previous, tplstart
+        )
+
+    monkeypatch.setattr(auto_pipeline, "matisse_calib", spy_matisse_calib)
+
+    auto_pipeline.run_pipeline(
+        dirRaw=str(raw_dir),
+        dirCalib=str(calib_dir),
+        dirResult=str(result_dir),
+        maxIter=2,
+        overwrite=1,
+    )
+
+    assert any(
+        any("Iter1" in path for path in sources) for sources in captured_sources
+    ), "expected previous iteration files to be reused as calibrations"

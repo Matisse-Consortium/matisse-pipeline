@@ -247,6 +247,371 @@ def test_matisse_calib_est_flat_collects_required_calibrations(tmp_path):
     }
 
 
+def test_matisse_calib_est_flat_prefers_closest_flatfield(tmp_path):
+    lib_auto_pipeline.cacheHdr.cache.clear()
+    header = _make_base_header()
+    tplstart = "2025-01-01T02:30:00"
+
+    badpix_path = _write_calibration_fits(
+        tmp_path,
+        "existing_badpix.fits",
+        **{
+            "HIERARCH ESO PRO CATG": "BADPIX",
+            "HIERARCH ESO DET READ CURNAME": header["HIERARCH ESO DET READ CURNAME"],
+            "HIERARCH ESO DET CHIP NAME": header["HIERARCH ESO DET CHIP NAME"],
+            "HIERARCH ESO DET SEQ1 DIT": header["HIERARCH ESO DET SEQ1 DIT"],
+            "HIERARCH ESO DET SEQ1 PERIOD": header["HIERARCH ESO DET SEQ1 PERIOD"],
+            "HIERARCH ESO TPL START": "2025-01-01T02:00:00",
+        },
+    )
+    older_flatfield_path = _write_calibration_fits(
+        tmp_path,
+        "older_flatfield.fits",
+        **{
+            "HIERARCH ESO PRO CATG": "FLATFIELD",
+            "HIERARCH ESO DET READ CURNAME": header["HIERARCH ESO DET READ CURNAME"],
+            "HIERARCH ESO DET CHIP NAME": header["HIERARCH ESO DET CHIP NAME"],
+            "HIERARCH ESO DET SEQ1 DIT": header["HIERARCH ESO DET SEQ1 DIT"],
+            "HIERARCH ESO DET SEQ1 PERIOD": header["HIERARCH ESO DET SEQ1 PERIOD"],
+            "HIERARCH ESO TPL START": "2025-01-01T01:00:00",
+        },
+    )
+    nonlinearity_path = _write_calibration_fits(
+        tmp_path,
+        "existing_nonlinearity.fits",
+        **{
+            "HIERARCH ESO PRO CATG": "NONLINEARITY",
+            "HIERARCH ESO DET READ CURNAME": header["HIERARCH ESO DET READ CURNAME"],
+            "HIERARCH ESO DET CHIP NAME": header["HIERARCH ESO DET CHIP NAME"],
+            "HIERARCH ESO DET SEQ1 DIT": header["HIERARCH ESO DET SEQ1 DIT"],
+            "HIERARCH ESO DET SEQ1 PERIOD": header["HIERARCH ESO DET SEQ1 PERIOD"],
+            "HIERARCH ESO TPL START": "2025-01-01T02:05:00",
+        },
+    )
+    closer_flatfield_path = _write_calibration_fits(
+        tmp_path,
+        "closer_flatfield.fits",
+        **{
+            "HIERARCH ESO PRO CATG": "FLATFIELD",
+            "HIERARCH ESO DET READ CURNAME": header["HIERARCH ESO DET READ CURNAME"],
+            "HIERARCH ESO DET CHIP NAME": header["HIERARCH ESO DET CHIP NAME"],
+            "HIERARCH ESO DET SEQ1 DIT": header["HIERARCH ESO DET SEQ1 DIT"],
+            "HIERARCH ESO DET SEQ1 PERIOD": header["HIERARCH ESO DET SEQ1 PERIOD"],
+            "HIERARCH ESO TPL START": "2025-01-01T02:20:00",
+        },
+    )
+
+    existing = [
+        (str(badpix_path), "BADPIX"),
+        (str(older_flatfield_path), "FLATFIELD"),
+        (str(nonlinearity_path), "NONLINEARITY"),
+    ]
+
+    returned, status = matisse_calib(
+        header,
+        "ACTION_MAT_EST_FLAT",
+        [str(closer_flatfield_path)],
+        existing,
+        tplstart,
+    )
+
+    assert status == 1
+    assert any(
+        path == str(closer_flatfield_path) and tag == "FLATFIELD"
+        for path, tag in returned
+    )
+    assert all(
+        path != str(older_flatfield_path)
+        for path, tag in returned
+        if tag == "FLATFIELD"
+    )
+
+
+@pytest.mark.parametrize(
+    "tag",
+    [
+        "BADPIX",
+        "OBS_FLATFIELD",
+        "NONLINEARITY",
+        "SHIFT_MAP",
+        "KAPPA_MATRIX",
+    ],
+)
+def test_matisse_calib_raw_estimates_prefers_closest_calibration(tmp_path, tag):
+    lib_auto_pipeline.cacheHdr.cache.clear()
+    header = _make_base_header(
+        **{
+            "HIERARCH ESO DET READ CURNAME": "SCI-FAST-SPEED",
+            "HIERARCH ESO INS DIL ID": "LOW",
+            "HIERARCH ESO INS DIN ID": "LOW",
+        }
+    )
+    tplstart = "2025-01-01T02:45:00"
+
+    common = {
+        key: header[key]
+        for key in [
+            "HIERARCH ESO DET READ CURNAME",
+            "HIERARCH ESO DET CHIP NAME",
+            "HIERARCH ESO DET SEQ1 DIT",
+            "HIERARCH ESO DET SEQ1 PERIOD",
+            "HIERARCH ESO INS PIL ID",
+            "HIERARCH ESO INS PIN ID",
+            "HIERARCH ESO INS DIL ID",
+            "HIERARCH ESO INS DIN ID",
+            "HIERARCH ESO INS POL ID",
+            "HIERARCH ESO INS FIL ID",
+            "HIERARCH ESO INS PON ID",
+            "HIERARCH ESO INS FIN ID",
+            "HIERARCH ESO DET WIN MTRH2",
+            "HIERARCH ESO DET WIN MTRS2",
+        ]
+    }
+
+    tags = [
+        "BADPIX",
+        "OBS_FLATFIELD",
+        "NONLINEARITY",
+        "SHIFT_MAP",
+        "KAPPA_MATRIX",
+    ]
+
+    existing: list[CalibEntry] = []
+    old_target_path: str | None = None
+    new_target_path: str | None = None
+
+    for current in tags:
+        old_path = _write_calibration_fits(
+            tmp_path,
+            f"old_{current.lower()}.fits",
+            **{
+                **common,
+                "HIERARCH ESO PRO CATG": current,
+                "HIERARCH ESO TPL START": "2025-01-01T00:00:00",
+            },
+        )
+        existing.append((str(old_path), current))
+        if current == tag:
+            new_path = _write_calibration_fits(
+                tmp_path,
+                f"new_{current.lower()}.fits",
+                **{
+                    **common,
+                    "HIERARCH ESO PRO CATG": current,
+                    "HIERARCH ESO TPL START": "2025-01-01T02:30:00",
+                },
+            )
+            new_target_path = str(new_path)
+            old_target_path = str(old_path)
+
+    assert new_target_path is not None
+    assert old_target_path is not None
+
+    returned, status = matisse_calib(
+        header,
+        "ACTION_MAT_RAW_ESTIMATES",
+        [new_target_path],
+        existing,
+        tplstart,
+    )
+
+    assert status == 1
+    assert any(
+        path == new_target_path and calib_tag == tag for path, calib_tag in returned
+    )
+    assert all(
+        path != old_target_path for path, calib_tag in returned if calib_tag == tag
+    )
+
+
+@pytest.mark.parametrize(
+    "tag",
+    [
+        "BADPIX",
+        "OBS_FLATFIELD",
+        "NONLINEARITY",
+        "SHIFT_MAP",
+    ],
+)
+def test_matisse_calib_est_kappa_prefers_closest_calibration(tmp_path, tag):
+    lib_auto_pipeline.cacheHdr.cache.clear()
+    header = _make_base_header(
+        **{
+            "HIERARCH ESO DET READ CURNAME": "SCI-FAST-SPEED",
+            "HIERARCH ESO INS DIL ID": "LOW",
+            "HIERARCH ESO INS DIN ID": "LOW",
+        }
+    )
+    tplstart = "2025-01-01T03:15:00"
+
+    common = {
+        key: header[key]
+        for key in [
+            "HIERARCH ESO DET READ CURNAME",
+            "HIERARCH ESO DET CHIP NAME",
+            "HIERARCH ESO DET SEQ1 DIT",
+            "HIERARCH ESO DET SEQ1 PERIOD",
+            "HIERARCH ESO INS PIL ID",
+            "HIERARCH ESO INS PIN ID",
+            "HIERARCH ESO INS DIL ID",
+            "HIERARCH ESO INS DIN ID",
+            "HIERARCH ESO INS POL ID",
+            "HIERARCH ESO INS FIL ID",
+            "HIERARCH ESO INS PON ID",
+            "HIERARCH ESO INS FIN ID",
+            "HIERARCH ESO DET WIN MTRH2",
+            "HIERARCH ESO DET WIN MTRS2",
+        ]
+    }
+
+    tags = [
+        "BADPIX",
+        "OBS_FLATFIELD",
+        "NONLINEARITY",
+        "SHIFT_MAP",
+    ]
+
+    existing: list[CalibEntry] = []
+    old_target_path: str | None = None
+    new_target_path: str | None = None
+
+    for current in tags:
+        old_path = _write_calibration_fits(
+            tmp_path,
+            f"kappa_old_{current.lower()}.fits",
+            **{
+                **common,
+                "HIERARCH ESO PRO CATG": current,
+                "HIERARCH ESO TPL START": "2025-01-01T00:00:00",
+            },
+        )
+        existing.append((str(old_path), current))
+        if current == tag:
+            new_path = _write_calibration_fits(
+                tmp_path,
+                f"kappa_new_{current.lower()}.fits",
+                **{
+                    **common,
+                    "HIERARCH ESO PRO CATG": current,
+                    "HIERARCH ESO TPL START": "2025-01-01T03:05:00",
+                },
+            )
+            new_target_path = str(new_path)
+            old_target_path = str(old_path)
+
+    assert new_target_path is not None
+    assert old_target_path is not None
+
+    returned, status = matisse_calib(
+        header,
+        "ACTION_MAT_EST_KAPPA",
+        [new_target_path],
+        existing,
+        tplstart,
+    )
+
+    assert status == 1
+    assert any(
+        path == new_target_path and calib_tag == tag for path, calib_tag in returned
+    )
+    assert all(
+        path != old_target_path for path, calib_tag in returned if calib_tag == tag
+    )
+
+
+@pytest.mark.parametrize(
+    "tag",
+    [
+        "BADPIX",
+        "OBS_FLATFIELD",
+        "NONLINEARITY",
+    ],
+)
+def test_matisse_calib_est_shift_prefers_closest_calibration(tmp_path, tag):
+    lib_auto_pipeline.cacheHdr.cache.clear()
+    header = _make_base_header(
+        **{
+            "HIERARCH ESO DET READ CURNAME": "SCI-SLOW-SPEED",
+            "HIERARCH ESO INS DIL ID": "LOW",
+            "HIERARCH ESO INS DIN ID": "LOW",
+        }
+    )
+    tplstart = "2025-01-01T03:45:00"
+
+    common = {
+        key: header[key]
+        for key in [
+            "HIERARCH ESO DET READ CURNAME",
+            "HIERARCH ESO DET CHIP NAME",
+            "HIERARCH ESO DET SEQ1 DIT",
+            "HIERARCH ESO DET SEQ1 PERIOD",
+            "HIERARCH ESO INS PIL ID",
+            "HIERARCH ESO INS PIN ID",
+            "HIERARCH ESO INS DIL ID",
+            "HIERARCH ESO INS DIN ID",
+            "HIERARCH ESO INS POL ID",
+            "HIERARCH ESO INS FIL ID",
+            "HIERARCH ESO INS PON ID",
+            "HIERARCH ESO INS FIN ID",
+            "HIERARCH ESO DET WIN MTRH2",
+            "HIERARCH ESO DET WIN MTRS2",
+        ]
+    }
+
+    tags = [
+        "BADPIX",
+        "OBS_FLATFIELD",
+        "NONLINEARITY",
+    ]
+
+    existing: list[CalibEntry] = []
+    old_target_path: str | None = None
+    new_target_path: str | None = None
+
+    for current in tags:
+        old_path = _write_calibration_fits(
+            tmp_path,
+            f"shift_old_{current.lower()}.fits",
+            **{
+                **common,
+                "HIERARCH ESO PRO CATG": current,
+                "HIERARCH ESO TPL START": "2025-01-01T00:00:00",
+            },
+        )
+        existing.append((str(old_path), current))
+        if current == tag:
+            new_path = _write_calibration_fits(
+                tmp_path,
+                f"shift_new_{current.lower()}.fits",
+                **{
+                    **common,
+                    "HIERARCH ESO PRO CATG": current,
+                    "HIERARCH ESO TPL START": "2025-01-01T03:35:00",
+                },
+            )
+            new_target_path = str(new_path)
+            old_target_path = str(old_path)
+
+    assert new_target_path is not None
+    assert old_target_path is not None
+
+    returned, status = matisse_calib(
+        header,
+        "ACTION_MAT_EST_SHIFT",
+        [new_target_path],
+        existing,
+        tplstart,
+    )
+
+    assert status == 1
+    assert any(
+        path == new_target_path and calib_tag == tag for path, calib_tag in returned
+    )
+    assert all(
+        path != old_target_path for path, calib_tag in returned if calib_tag == tag
+    )
+
+
 def test_matisse_calib_im_basic_prefers_closest_badpix(tmp_path):
     lib_auto_pipeline.cacheHdr.cache.clear()
     header = _make_base_header()
