@@ -147,19 +147,6 @@ def tidyup_path(input_dir: Path) -> None:
         for file in fits_files:
             fifil = file.name
 
-            # Legacy only considers names that end with 'fits'
-            if not fifil.endswith("fits"):
-                continue
-
-            # Skip by pattern (fnmatch)
-            skip = False
-            for pat in SKIP_PATTERNS:
-                if fnmatch(fifil, pat):
-                    skip = True
-                    break
-            if skip:
-                continue
-
             # Copy, then rename inside backup dir — only for the two CATG values
             try:
                 hdr = fits.getheader(str(file))
