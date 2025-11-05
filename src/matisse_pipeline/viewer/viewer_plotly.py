@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.io as pio
+from astropy import units as u
 from plotly.subplots import make_subplots
 
 sta_name_list = np.array(
@@ -88,6 +89,75 @@ sta_pos_list = np.array(
 telescope_colors = ["#A2C8E8", "#F8C8DC", "#FBE8A6", "#C7E5B4"]
 baseline_colors = ["#9B59B6", "#7C889B", "#F4D03F", "#FF6F61", "#2ECC71", "#1E90FF"]
 cp_colors = ["#FAA050", "#B8AC6D", "#BE7C7E", "#26AEB8"]
+
+# Color palette (ESO-like)
+QC_COLORS = {
+    "excellent": "rgba(0,200,0,0.6)",  # dark green
+    "good": "rgba(144,238,144,0.6)",  # light green
+    "avg": "rgba(255,215,0,0.6)",  # gold
+    "bad": "rgba(255,99,71,0.6)",  # tomato
+    "blank": "rgba(255,255,255,0.8)",  # default
+}
+
+# Thresholds per metric (units: seeing["], tau0[ms], airmass[-], wind_speed[m/s])
+QC_THRESHOLDS = {
+    "seeing": [(0.6, "excellent"), (0.8, "good"), (1.2, "avg"), (float("inf"), "bad")],
+    "tau0": [
+        (2.0, "bad"),
+        (4.0, "avg"),
+        (6.0, "good"),
+        (float("-inf"), "excellent"),
+    ],  # handled in code (reverse)
+    "airmass": [(1.2, "excellent"), (1.5, "good"), (2.0, "avg"), (float("inf"), "bad")],
+    "wind_speed": [
+        (8.0, "excellent"),
+        (12.0, "good"),
+        (15.0, "avg"),
+        (float("inf"), "bad"),
+    ],
+    "humidity": [(50, "excellent"), (70, "good"), (80, "avg"), (float("inf"), "bad")],
+}
+
+
+def symbol_for_mode(param):
+    """Return an emoji or symbol for a given observing mode/flag."""
+    symbols = {
+        "bcd": "🔁",
+        "chopping": "🔄",
+        "dit": "🧭",
+        "disp": "🔷",
+    }
+    return symbols.get(param.lower(), "")
+
+
+def _qc_color(value, metric):
+    """Return a background color for a single cell value and metric."""
+    if value is None:
+        return QC_COLORS["blank"]
+    try:
+        if hasattr(value, "value"):
+            v = float(value.value)
+        else:
+            v = float(value)
+    except Exception:
+        return QC_COLORS["blank"]
+
+    # tau0 is 'higher is better'; others listed as increasing->worse (except we encoded each directly)
+    if metric == "tau0":
+        # reverse walk (higher is better)
+        if v >= 6.0:
+            return QC_COLORS["excellent"]
+        if v >= 4.0:
+            return QC_COLORS["good"]
+        if v >= 2.0:
+            return QC_COLORS["avg"]
+        return QC_COLORS["bad"]
+
+    # generic increasing->worse rule using QC_THRESHOLDS bins
+    for thr, label in QC_THRESHOLDS[metric]:
+        if v <= thr:
+            return QC_COLORS[label]
+    return QC_COLORS["bad"]
 
 
 def build_blname_list(data: dict[str, Any]) -> list:
@@ -425,7 +495,7 @@ def create_meta(data):
     meta["target"] = data["TARGET"]
     meta["cat"] = data["CATEGORY"]
     meta["date"] = data["DATEOBS"]
-    meta["dit"] = data["DIT"]
+    meta["dit"] = data["DIT"] * u.s
     meta["disp"] = data["DISP"]
     meta["band"] = data["BAND"]
     meta["bcd"] = f"{data['BCD1NAME']}-{data['BCD2NAME']}"
@@ -434,6 +504,11 @@ def create_meta(data):
     for bl in data["STA_NAME"][1:]:
         config += "-" + bl
     meta["config"] = config
+
+    # Chopping mode
+    chop = data["HDR"].get("HIERARCH ESO ISS CHOP ST", "F")
+    chop_mode = "No" if chop == "F" else "Yes"
+    meta["chopping"] = chop_mode
     return meta
 
 
@@ -447,6 +522,7 @@ def make_table(
     x_annot: float,
     y_annot: float,
     keys: list[str] | None = None,
+    fill_colors: list[list[str]] | None = None,
 ):
     """
     Add a formatted table with a colored header (annotation) and borders to a Plotly figure.
@@ -473,14 +549,28 @@ def make_table(
     else:
         raise TypeError("Input must be dict.")
 
+    # --- Default background colors ---
+    if fill_colors is None:
+        n_rows = len(df)
+        fill_colors = [
+            ["rgba(255,255,255,0.8)"] * n_rows,  # col 1
+            ["rgba(255,255,255,0.8)"] * n_rows,  # col 2
+        ]
+
     # --- Filter by selected keys (case-insensitive) ---
     if keys is not None:
         keyset = {k.lower() for k in keys}
         df = df[df["Parameter"].str.lower().isin(keyset)]
 
+    # Add symbols
+    df["Parameter"] = [f"{x} {symbol_for_mode(x)}" for x in df["Parameter"]]
+
     # --- Style for bold uppercase parameter names ---
     df["Parameter"] = df["Parameter"].apply(lambda x: f"<b>{x.upper()}</b>")
 
+    values_unit = [
+        f"{x.value} {x.unit}" if hasattr(x, "unit") else x for x in df["Value"]
+    ]
     # --- Add table (no header, borders visible) ---
     fig.add_trace(
         go.Table(
@@ -491,10 +581,10 @@ def make_table(
                 height=0,
             ),
             cells=dict(
-                values=[df["Parameter"], df["Value"]],
-                fill_color="#FFFFFF",
+                values=[df["Parameter"], values_unit],
+                fill_color=fill_colors,
                 align=["left", "left"],
-                font=dict(size=9, color="black"),
+                font=dict(size=8, color="black"),
                 height=20,
                 line_color=color,
             ),
@@ -545,9 +635,34 @@ def make_title(fig, meta, color="navy"):
 
 
 def plot_spectrum(fig, data):
+    def _annotate_missing_flux() -> bool:
+        fig.add_annotation(
+            text="<b>NO FLUX DATA</b>",
+            xref="paper",
+            yref="paper",
+            x=0.05,
+            y=0.74,
+            showarrow=False,
+            font=dict(size=14, color="#555"),
+            align="center",
+            bgcolor="rgba(255,255,255,0.85)",
+            bordercolor="rgba(120,120,120,0.4)",
+            borderwidth=1,
+        )
+        return False
+
+    try:
+        flux_block = data["FLUX"]
+    except (KeyError, TypeError):
+        return _annotate_missing_flux()
+
+    try:
+        table_flux = flux_block["FLUX"]
+        sta_index = flux_block["STA_INDEX"]
+    except (KeyError, TypeError):
+        return _annotate_missing_flux()
+
     lam = np.ascontiguousarray(data["WLEN"], dtype=np.float64) * 1e6
-    table_flux = data["FLUX"]["FLUX"]
-    sta_index = data["FLUX"]["STA_INDEX"]
     ref_station = {
         data["STA_INDEX"][i]: data["STA_NAME"][i] for i in range(len(data["STA_INDEX"]))
     }
@@ -559,6 +674,10 @@ def plot_spectrum(fig, data):
     for i in range(len(table_flux)):
         flux = np.ascontiguousarray(table_flux[i], dtype=np.float64)
         all_flux_values.append(flux)
+
+    if not all_flux_values:
+        return _annotate_missing_flux()
+
     ymin = float(np.nanmin(all_flux_values))
     ymax = float(np.nanmax(all_flux_values))
 
@@ -603,6 +722,8 @@ def plot_spectrum(fig, data):
         col=1,
     )
 
+    return True
+
 
 def make_uvplot(
     fig,
@@ -632,7 +753,7 @@ def make_uvplot(
 
     # --- Plot each baseline's UV points
     seen = set()
-    for u, v, name, color in zip(
+    for i_u, i_v, name, color in zip(
         u_coords, v_coords, baseline_names, baseline_colors, strict=True
     ):
         showleg = name not in seen
@@ -641,8 +762,8 @@ def make_uvplot(
 
         fig.add_trace(
             go.Scatter(
-                x=[u],
-                y=[v],
+                x=[i_u],
+                y=[i_v],
                 mode="markers",
                 marker=dict(size=6, color=color),
                 name=f"{name} ({bl_lengths[name]:.1f} m)",
@@ -655,8 +776,8 @@ def make_uvplot(
         )
         fig.add_trace(
             go.Scatter(
-                x=[-u],
-                y=[-v],
+                x=[-i_u],
+                y=[-i_v],
                 name=name,
                 mode="markers",
                 marker=dict(size=6, color=color),
@@ -691,7 +812,7 @@ def make_uvplot(
         zeroline=True,
         row=row,
         col=col,
-        domain=[0.6, 0.85],
+        domain=[0.6, 0.82],
     )
     fig.update_yaxes(scaleanchor="x", scaleratio=1)
 
@@ -938,10 +1059,6 @@ def plot_closure_groups(
 def make_static_matisse_plot(data, mix_color: bool = False):
     meta = create_meta(data)
 
-    quality = {}
-    quality["seeing"] = data["SEEING"]
-    quality["tau0"] = data["TAU0"]
-
     rel_scale_vis = 0.08
     # --- Création du canevas 8x3 ---
     fig = make_subplots(
@@ -989,33 +1106,62 @@ def make_static_matisse_plot(data, mix_color: bool = False):
         col=1,
         x_annot=0.08,
         y_annot=1.04,
-        keys=["band", "disp", "bcd", "dit"],
+        keys=["band", "disp", "bcd", "dit", "chopping"],
     )
 
     # Block 2 - Quality check
+    # -----------------------
+    quality = {}
+    quality["seeing"] = data["SEEING"] * u.arcsec
+    quality["tau0"] = round(data["TAU0"] * 1e3, 2) * u.ms
+    quality["wind_speed"] = data["HDR"].get("ESO ISS AMBI WINDSP", np.nan) * u.m / u.s
+    quality["humidity"] = data["HDR"].get("ESO ISS AMBI RHUM", np.nan) * u.percent
+    airmass_start = data["HDR"].get("ESO ISS AIRM START", np.nan)
+    airmass_end = data["HDR"].get("ESO ISS AIRM END", np.nan)
+    quality["airmass"] = round((airmass_start + airmass_end) / 2.0, 2)
+
+    fill_colors = [
+        ["rgba(255,255,255,0.8)"],
+        [_qc_color(v, k) for k, v in quality.items()],
+    ]
+
     make_table(
         fig,
         data=quality,
-        title="Quality check",
-        color="#F8D5D7",
+        title="Observing conditions",
+        color="#DDEAEA",
+        fill_colors=fill_colors,
         row=1,
         col=3,
-        x_annot=0.89,
+        x_annot=0.93,
         y_annot=1.04,
     )
 
-    sta_index = data["FLUX"]["STA_INDEX"]
     ref_station = {
         data["STA_INDEX"][i]: data["STA_NAME"][i] for i in range(len(data["STA_INDEX"]))
     }
-    station_flux = [ref_station[sta] for sta in sta_index]
+    station_flux = []
+    try:
+        flux_block = data["FLUX"]
+    except (KeyError, TypeError):
+        flux_block = None
+    if flux_block is not None:
+        try:
+            sta_index = flux_block["STA_INDEX"]
+        except (KeyError, TypeError):
+            sta_index = None
+        if sta_index is not None:
+            station_flux = [ref_station[sta] for sta in sta_index]
 
     fig.update_yaxes(domain=[0.82, 1.00], row=1, col=1)
     fig.update_yaxes(domain=[0.82, 1.00], row=1, col=3)
 
     # Block 3 - Spectrum
-    plot_spectrum(fig, data)
+    has_flux = plot_spectrum(fig, data)
     fig.update_yaxes(domain=[0.68, 0.84], row=2, col=1)
+    if not has_flux:
+        fig.update_yaxes(showticklabels=False, row=2, col=1)
+        fig.update_xaxes(showticklabels=False, row=2, col=1)
 
     ucoord = data["VIS2"]["U"]
     vcoord = data["VIS2"]["V"]
@@ -1082,7 +1228,7 @@ def make_static_matisse_plot(data, mix_color: bool = False):
     fig.update_layout(
         template="plotly_white",
         width=1200,
-        height=800,
+        height=950,
         margin=dict(t=40, b=20, l=60, r=40),
     )
 
