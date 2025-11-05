@@ -1,3 +1,4 @@
+import re
 import subprocess
 
 from typer.testing import CliRunner
@@ -69,6 +70,11 @@ def test_reduce_with_one_file(tmp_path, caplog):
     )
 
 
+def strip_ansi(text: str) -> str:
+    """Remove ANSI color codes for consistent test output."""
+    return re.sub(r"\x1b\[[0-9;]*m", "", text)
+
+
 def test_reduce_no_good_res(tmp_path):
     """
     Ensure 'matisse reduce' runs successfully when the directory contains one file.
@@ -87,8 +93,9 @@ def test_reduce_no_good_res(tmp_path):
         catch_exceptions=False,
         color=False,
     )
+    clean_output = strip_ansi(result.output)
     assert result.exit_code != 0
-    assert "Invalid value for '--resol'" in result.output
+    assert "Invalid value for '--resol'" in clean_output
 
 
 def test_matisse_format_with_fake_file(tmp_path, caplog):
