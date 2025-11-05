@@ -69,7 +69,7 @@ def test_reduce_with_one_file(tmp_path, caplog):
     )
 
 
-def test_reduce_no_good_res(tmp_path, caplog):
+def test_reduce_no_good_res(tmp_path):
     """
     Ensure 'matisse reduce' runs successfully when the directory contains one file.
     In this case, the file is a fake MATISSE one and therefore, no esorex command are
@@ -85,6 +85,7 @@ def test_reduce_no_good_res(tmp_path, caplog):
         app,
         ["reduce", "--datadir", str(datadir), "--resol", "bad_res"],
         catch_exceptions=False,
+        color=False,
     )
     assert result.exit_code != 0
     assert "Invalid value for '--resol'" in result.output
