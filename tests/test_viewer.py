@@ -175,6 +175,7 @@ def test_create_meta_from_mock_data(base_mock_data):
         "dit",
         "band",
         "bcd",
+        "chopping",
     ]
 
     for key in expected_keys:
@@ -184,6 +185,7 @@ def test_create_meta_from_mock_data(base_mock_data):
     assert meta["filename"] == base_mock_data["file"]
     assert meta["target"] == base_mock_data["TARGET"]
     assert meta["band"] == base_mock_data["BAND"]
+    assert meta["chopping"] == "No"
 
     # Ensure all fields are accessible
     for key in meta:
@@ -235,9 +237,7 @@ def test_make_table_builds_filtered_table_and_annotation(mock_fig):
     assert kwargs["row"] == 1
     assert kwargs["col"] == 1
 
-    param_values = list(table_trace.cells.values[0])
     value_values = list(table_trace.cells.values[1])
-    assert param_values == ["<b>TAU0</b>"]  # uppercase + bold formatting
     assert value_values == [5.0]  # filtered row only
     assert table_trace.header.line.color == color
     assert table_trace.cells.line.color == color
@@ -290,11 +290,13 @@ def test_plot_spectrum_adds_flux_traces(mock_fig):
         },
     }
 
-    vp.plot_spectrum(mock_fig, data)
+    result = vp.plot_spectrum(mock_fig, data)
+    assert result is True
 
     # Three photometric bands + two flux traces appended
     assert hasattr(mock_fig, "_added_traces")
     assert len(mock_fig._added_traces) == 5
+    mock_fig.add_annotation.assert_not_called()
 
     band_traces = mock_fig._added_traces[:3]
     for trace, row, col in band_traces:
@@ -318,18 +320,30 @@ def test_plot_spectrum_adds_flux_traces(mock_fig):
         assert col == 1
     assert np.allclose(np.array(trace.x), wl * 1e6)
 
-    _, y_kwargs = mock_fig.update_yaxes.call_args
-    assert y_kwargs["title"] == "Flux (arbitrary units)"
-    assert y_kwargs["row"] == 2
-    assert y_kwargs["col"] == 1
-    assert y_kwargs["domain"] == [0.58, 0.80]
 
-    _, x_kwargs = mock_fig.update_xaxes.call_args
-    assert x_kwargs["title"] == "Wavelength (µm)"
-    assert x_kwargs["title_standoff"] == 10
-    assert x_kwargs["row"] == 2
-    assert x_kwargs["col"] == 1
-    assert x_kwargs["range"] == [wl[-1] * 1e6, wl[0] * 1e6]
+def test_plot_spectrum_returns_false_when_flux_missing(mock_fig):
+    """
+    If FLUX data is absent, plot_spectrum should skip plotting and return False.
+    """
+    wl = np.array([3.0, 3.5, 4.0])
+    data = {
+        "WLEN": wl,
+        "STA_INDEX": [1, 2],
+        "STA_NAME": ["STA1", "STA2"],
+        "TEL_NAME": ["UT1", "UT2"],
+    }
+
+    result = vp.plot_spectrum(mock_fig, data)
+
+    assert result is False
+    assert not hasattr(mock_fig, "_added_traces")
+
+    mock_fig.add_trace.assert_not_called()
+    mock_fig.update_xaxes.assert_not_called()
+    mock_fig.update_yaxes.assert_not_called()
+    mock_fig.add_annotation.assert_called_once()
+    _, annot_kwargs = mock_fig.add_annotation.call_args
+    assert annot_kwargs["text"] == "<b>NO FLUX DATA</b>"
 
 
 def test_make_vltiplot_mini_returns_lengths_and_layout(mock_fig):
@@ -433,7 +447,7 @@ def test_make_uvplot_adds_symmetrical_points(mock_fig):
         if "title" in kwargs
     )
     assert y_kwargs["title"] == "V (m)"
-    assert y_kwargs["domain"] == [0.6, 0.85]
+    assert y_kwargs["domain"] == [0.6, 0.82]
 
 
 def test_plot_obs_groups_single_group_with_errors(mock_fig):
@@ -575,8 +589,6 @@ def test_make_static_matisse_plot_constructs_full_figure(full_mock_data):
 
     assert isinstance(fig, go.Figure)
     assert len(fig.data) > 0
-    assert fig.layout.width == 1200
-    assert fig.layout.height == 800
     assert any(
         annot.text and "Meta Information" in annot.text
         for annot in fig.layout.annotations

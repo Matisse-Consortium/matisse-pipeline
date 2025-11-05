@@ -59,6 +59,7 @@ def base_mock_data():
         "BCD1NAME": "IN",
         "BCD2NAME": "OUT",
         "TEL_NAME": ["UT1", "UT2", "UT3"],
+        "HDR": {"HIERARCH ESO ISS CHOP ST": "F"},
     }
     return data
 
@@ -112,6 +113,7 @@ def full_mock_data():
         "SEEING": 0.6,
         "TAU0": 4.0,
         "WLEN": wlen,
+        "HDR": {"HIERARCH ESO ISS CHOP ST": "T"},
         "FLUX": {
             "FLUX": flux_values,
             "STA_INDEX": sta_index,
