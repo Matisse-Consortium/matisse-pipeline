@@ -271,42 +271,6 @@ def test_make_title_adds_annotation(mock_fig):
     assert kwargs["yref"] == "paper"
 
 
-def test_make_cp_plot_adds_closure_phase_trace(monkeypatch, mock_fig):
-    """
-    make_cp_plot must add a single Scatter trace with the configured color and legend.
-    """
-    monkeypatch.setattr(
-        vp.np.random, "randn", lambda *args, **kwargs: np.zeros(args[-1])
-    )
-
-    vp.make_cp_plot(mock_fig, row=5, baseline_name="A0-G0", col=2, color="#123456")
-
-    assert hasattr(mock_fig, "_added_traces")
-    assert len(mock_fig._added_traces) == 1
-    trace, row, col = mock_fig._added_traces[0]
-    assert row == 5
-    assert col == 2
-    assert isinstance(trace, go.Scatter)
-    assert trace.line.color == "#123456"
-    assert trace.mode == "lines"
-    assert trace.legendgroup == "cp"
-    assert trace.showlegend is True
-
-    # Axes configuration for closure plots
-    range_kwargs = next(
-        kwargs
-        for _, kwargs in mock_fig.update_yaxes.call_args_list
-        if "range" in kwargs
-    )
-    assert range_kwargs["row"] == 5
-    assert range_kwargs["col"] == 2
-    assert range_kwargs["range"] == [-190, 190]
-
-    title_kwargs = mock_fig.update_yaxes.call_args_list[-1][1]
-    assert title_kwargs["row"] == 5
-    assert title_kwargs["col"] == 2
-
-
 def test_plot_spectrum_adds_flux_traces(mock_fig):
     """
     plot_spectrum should add photometric bands, then append one Scatter trace

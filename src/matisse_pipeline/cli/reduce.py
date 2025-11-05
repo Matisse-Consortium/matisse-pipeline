@@ -26,17 +26,6 @@ class Resolution(str, Enum):
     MED = "MED"
     HIGH = "HIGH"
 
-    @classmethod
-    def _missing_(cls, value: object):  # To be insensitive to case
-        if isinstance(value, str):
-            value_upper = value.upper()
-            for member in cls:
-                if member.value == value_upper:
-                    return member
-        raise ValueError(
-            f"Invalid resolution '{value}'. Choose one of: LOW, MED, HIGH."
-        )
-
 
 def reduce(
     datadir: Path = typer.Option(

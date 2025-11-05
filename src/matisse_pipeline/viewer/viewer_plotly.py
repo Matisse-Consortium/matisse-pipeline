@@ -604,58 +604,6 @@ def plot_spectrum(fig, data):
     )
 
 
-def make_cp_plot(
-    fig,
-    row: int,
-    baseline_name: str,
-    col: int = 1,
-    color: str = "#A7C7E7",
-):
-    """
-    Add a single baseline plot (e.g. V² vs λ) in the given row, column 1.
-    """
-
-    # --- Données factices pour démonstration ---
-    wl = np.linspace(2.9, 5.3, 200)
-    v2 = np.clip(np.cos((wl - 3.5) * 8 + row) ** 2 + 0.05 * np.random.randn(200), 0, 1)
-
-    # --- Trace V² ---
-    fig.add_trace(
-        go.Scatter(
-            x=wl,
-            y=v2,
-            mode="lines",
-            line=dict(width=2, color=color),
-            name=f"{baseline_name}",
-            showlegend=True,
-            legendgroup="cp",
-            legendgrouptitle_text="Closure phase triplets",
-        ),
-        row=row,
-        col=col,
-    )
-    fig.update_yaxes(range=[-190, 190], row=row, col=col)
-
-    # --- Axes et style ---
-    fig.update_xaxes(
-        title="Wavelength (µm)" if row == 7 else "",
-        showgrid=False,
-        tickfont=dict(size=10),
-        showticklabels=(row == 8),
-        row=row,
-        col=col,
-    )
-    fig.update_yaxes(
-        title="Closure phase [°]" if row == 6 else "",
-        showgrid=True,
-        tickfont=dict(size=10),
-        row=row,
-        col=col,
-    )
-
-    return fig
-
-
 def make_uvplot(
     fig,
     u_coords,

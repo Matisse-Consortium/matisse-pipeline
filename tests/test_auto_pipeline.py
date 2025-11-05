@@ -4,6 +4,7 @@ import io
 
 # import sys
 from pathlib import Path
+from threading import Lock
 
 import pytest
 from astropy.io import fits
@@ -41,6 +42,245 @@ def _write_fits(path: Path, **header_values):
     for key, value in header_values.items():
         hdu.header[key] = value
     hdu.writeto(path, overwrite=True)
+
+
+def test_run_esorex_invokes_esorex_command(monkeypatch, tmp_path):
+    messages: list[str] = []
+
+    class _ConsoleStub:
+        def print(self, *args, **_kwargs):
+            messages.append(" ".join(str(arg) for arg in args))
+
+    dummy_console = _ConsoleStub()
+    monkeypatch.setattr(auto_pipeline, "console", dummy_console)
+
+    captured_command: dict[str, str] = {}
+
+    def fake_system(command: str) -> int:
+        captured_command["value"] = command
+        return 0
+
+    monkeypatch.setattr(auto_pipeline.os, "system", fake_system)
+
+    workdir = tmp_path / "workdir"
+    workdir.mkdir()
+    job_path = tmp_path / "mat_job"
+
+    base_cmd = f"esorex --working-dir={workdir} {job_path}"
+    original_cmd = f"{base_cmd} % simulated progress output"
+    block_index = 4
+
+    result = auto_pipeline.run_esorex((original_cmd, block_index, Lock()))
+
+    assert result == (block_index, True)
+
+    expected_system_call = (
+        f"cd {workdir}; {base_cmd} > {job_path}.log 2> {job_path}.err"
+    )
+
+    assert captured_command["value"] == expected_system_call
+    assert any(f"Block {block_index}" in message for message in messages)
+
+
+class _StopPipeline(Exception):
+    pass
+
+
+@pytest.mark.parametrize(
+    ("tplidsel", "tplstartsel", "expected"),
+    [
+        ("TPL-MATCH", "2025-01-01T00:00:00", ["match"]),
+        ("TPL-MATCH", "", ["match"]),
+        ("", "2025-01-01T00:00:00", ["match"]),
+        ("", "", ["match", "other"]),
+    ],
+)
+@pytest.mark.parametrize(
+    ("detector", "skipL", "skipN"),
+    [("HAWAII-2RG", False, True), ("AQUARIUS", True, False)],
+)
+def test_run_pipeline_filters_tpl_selection(
+    monkeypatch, tmp_path, detector, skipL, skipN, tplidsel, tplstartsel, expected
+):
+    match_path = tmp_path / "MATCH.fits"
+    other_path = tmp_path / "OTHER.fits"
+    match_path.write_text("")
+    other_path.write_text("")
+
+    def _header(label: str, tplid: str, tplstart: str):
+        hdr = fits.Header()
+        hdr["HIERARCH ESO DPR TYPE"] = "OBJECT"
+        hdr["HIERARCH ESO DET CHIP NAME"] = detector
+        hdr["HIERARCH ESO INS DIL NAME"] = "LOW"
+        hdr["HIERARCH ESO INS DIN NAME"] = "LOW"
+        hdr["HIERARCH ESO TPL ID"] = tplid
+        hdr["HIERARCH ESO TPL START"] = tplstart
+        hdr["HIERARCH ESO DPR TECH"] = "INTERFEROMETRY"
+        hdr["HIERARCH ESO DPR CATG"] = "SCIENCE"
+        hdr["TEST_NAME"] = label
+        return hdr
+
+    headers = {
+        str(match_path): _header("match", "TPL-MATCH", "2025-01-01T00:00:00"),
+        str(other_path): _header("other", "TPL-OTHER", "2024-12-31T23:59:59"),
+    }
+
+    selected: list[str] = []
+
+    class _ConsoleStub:
+        def print(self, *_args, **_kwargs):
+            return None
+
+    dummy_console = _ConsoleStub()
+    monkeypatch.setattr(auto_pipeline, "console", dummy_console)
+    monkeypatch.setattr(log_utils, "console", dummy_console)
+    monkeypatch.setattr(auto_pipeline, "Progress", _DummyProgress)
+    monkeypatch.setattr(auto_pipeline, "Vizier", _DummyVizier)
+    monkeypatch.setattr(auto_pipeline, "section", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(auto_pipeline, "iteration_banner", lambda *_args: None)
+
+    def fake_resolve_raw_input(_path: str):
+        return [str(match_path), str(other_path)], "manual"
+
+    def fake_getheader(path: str, _index: int):
+        return headers[path]
+
+    monkeypatch.setattr(auto_pipeline, "resolve_raw_input", fake_resolve_raw_input)
+    monkeypatch.setattr(auto_pipeline, "getheader", fake_getheader)
+
+    def fake_type(hdr):
+        selected.append(hdr["TEST_NAME"])
+        return "TAG"
+
+    def stop_action(*_args, **_kwargs):
+        raise _StopPipeline()
+
+    monkeypatch.setattr(auto_pipeline, "matisse_type", fake_type)
+    monkeypatch.setattr(auto_pipeline, "matisse_action", stop_action)
+
+    def fake_recipes(*_args, **_kwargs):
+        return "recipe", "params"
+
+    monkeypatch.setattr(auto_pipeline, "matisse_recipes", fake_recipes)
+
+    result_dir = tmp_path / "results"
+    result_dir.mkdir()
+
+    with pytest.raises(_StopPipeline):
+        auto_pipeline.run_pipeline(
+            dirRaw=str(tmp_path),
+            dirResult=str(result_dir),
+            skipL=skipL,
+            skipN=skipN,
+            tplidsel=tplidsel,
+            tplstartsel=tplstartsel,
+        )
+
+    assert selected == expected
+
+
+def test_run_pipeline_existing_output_dir(monkeypatch, tmp_path):
+    raw_dir = tmp_path / "raw"
+    calib_dir = tmp_path / "calib"
+    result_dir = tmp_path / "results"
+    raw_dir.mkdir()
+    calib_dir.mkdir()
+    result_dir.mkdir()
+
+    raw_path = raw_dir / "raw.fits"
+    raw_path.write_text("")
+
+    tplstart = "2025-01-01T00:00:00"
+    chip = "HAWAII-2RG"
+    rbname_safe = f"recipe.{tplstart}.HAWAII-2RG".replace(":", "_")
+    iter_dir = result_dir / "Iter1"
+    iter_dir.mkdir()
+    output_dir = iter_dir / f"{rbname_safe}.rb"
+    output_dir.mkdir()
+    (output_dir / "dummy.txt").write_text("content")
+    logfile = output_dir / ".logfile"
+    logfile.write_text("old log")
+
+    sof_path = iter_dir / f"{rbname_safe}.sof"
+    sof_path.write_text("existing sof")
+
+    class _ConsoleStub:
+        def print(self, *_args, **_kwargs):
+            return None
+
+    dummy_console = _ConsoleStub()
+    monkeypatch.setattr(auto_pipeline, "console", dummy_console)
+    monkeypatch.setattr(log_utils, "console", dummy_console)
+    monkeypatch.setattr(auto_pipeline, "Progress", _DummyProgress)
+    monkeypatch.setattr(auto_pipeline, "Vizier", _DummyVizier)
+    monkeypatch.setattr(auto_pipeline, "section", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(auto_pipeline, "iteration_banner", lambda *_args: None)
+    monkeypatch.setattr(auto_pipeline, "remove_double_parameter", lambda value: value)
+    monkeypatch.setattr(
+        auto_pipeline, "show_calibration_status", lambda *_args, **_kwargs: None
+    )
+    monkeypatch.setattr(
+        log_utils, "show_calibration_status", lambda *_args, **_kwargs: None
+    )
+    monkeypatch.setattr(
+        auto_pipeline, "show_blocs_status", lambda *_args, **_kwargs: True
+    )
+
+    def fake_resolve_raw_input(_path: str):
+        return [str(raw_path)], "manual"
+
+    def fake_getheader(_path: str, _index: int):
+        hdr = fits.Header()
+        hdr["HIERARCH ESO DPR TYPE"] = "OBJECT"
+        hdr["HIERARCH ESO DPR TECH"] = "INTERFEROMETRY"
+        hdr["HIERARCH ESO DPR CATG"] = "SCIENCE"
+        hdr["HIERARCH ESO DET CHIP NAME"] = chip
+        hdr["HIERARCH ESO INS DIL NAME"] = "LOW"
+        hdr["HIERARCH ESO TPL ID"] = "TPL-ID"
+        hdr["HIERARCH ESO TPL START"] = tplstart
+        hdr["ESO OBS TARG NAME"] = "TARGET-STAR"
+        hdr["HIERARCH ESO INS DIN NAME"] = "LOW"
+        return hdr
+
+    monkeypatch.setattr(auto_pipeline, "resolve_raw_input", fake_resolve_raw_input)
+    monkeypatch.setattr(auto_pipeline, "getheader", fake_getheader)
+
+    def fake_type(_hdr):
+        return "TAG"
+
+    def fake_action(*_args, **_kwargs):
+        return "ACTION"
+
+    def fake_recipes(*_args, **_kwargs):
+        return "recipe", "params"
+
+    def fake_calib(*_args, **_kwargs):
+        return [], 1
+
+    monkeypatch.setattr(auto_pipeline, "matisse_type", fake_type)
+    monkeypatch.setattr(auto_pipeline, "matisse_action", fake_action)
+    monkeypatch.setattr(auto_pipeline, "matisse_recipes", fake_recipes)
+    monkeypatch.setattr(auto_pipeline, "matisse_calib", fake_calib)
+
+    run_called = False
+
+    def fail_run(*_args, **_kwargs):
+        nonlocal run_called
+        run_called = True
+        return 0, True
+
+    monkeypatch.setattr(auto_pipeline, "run_esorex", fail_run)
+
+    auto_pipeline.run_pipeline(
+        dirRaw=str(raw_dir),
+        dirCalib=str(calib_dir),
+        dirResult=str(result_dir),
+        skipN=True,
+        check_blocks=True,
+    )
+
+    assert not logfile.exists()
+    assert run_called is False
 
 
 @pytest.mark.parametrize(
