@@ -30,12 +30,6 @@ It’s fully compatible with `pip` but much faster and simpler to use.
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-**On windows (PowerShell):**
-
-```bash
-powershell -c "irm https://astral.sh/uv/install.ps1 | more"
-```
-
 ### 2️⃣ Create and activate a virtual environment
 
 ```bash
