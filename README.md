@@ -4,7 +4,7 @@
 </p>
 <!-- markdownlint-enable MD033 MD041 -->
 
-[![Status](https://img.shields.io/badge/status-Beta-orange.svg)](https://github.com/Matisse-Consortium/matisse-pipeline) [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue.svg)](https://www.python.org/) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Status](https://img.shields.io/badge/status-Beta-orange.svg)](https://github.com/Matisse-Consortium/matisse-pipeline) [![Python versions](https://img.shields.io/badge/python-3.10–3.14-blue)](<https://www.python.org/>) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 [![CI](https://github.com/Matisse-Consortium/matisse-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/Matisse-Consortium/matisse-pipeline/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/Matisse-Consortium/matisse-pipeline/branch/main/graph/badge.svg?token=N2CINYUJBI)](https://codecov.io/gh/Matisse-Consortium/matisse-pipeline)
@@ -28,12 +28,6 @@ It’s fully compatible with `pip` but much faster and simpler to use.
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
-```
-
-**On windows (PowerShell):**
-
-```bash
-powershell -c "irm https://astral.sh/uv/install.ps1 | more"
 ```
 
 ### 2️⃣ Create and activate a virtual environment
