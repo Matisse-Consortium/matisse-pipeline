@@ -57,7 +57,7 @@ def reduce(
     resol: Resolution = typer.Option(
         Resolution.LOW,
         "--resol",
-        help="Spectral resolution (LOW, MED, HIGH). Case-insensitive.",
+        help="Spectral resolution (LOW, MED, HIGH).",
     ),
     spectral_binning: str = typer.Option(
         "", "--spectral-binning", help="Spectral binning to improve SNR."
