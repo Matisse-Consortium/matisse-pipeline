@@ -158,7 +158,7 @@ def show_blocs_status(listCmdEsorex, iterNumber, maxIter, listRedBlocks, check_b
 
     if listCmdEsorex == [] or iterNumber == maxIter:
         table = Table(
-            title="- MATISSE final reduction summary -",
+            title="\n- MATISSE final reduction summary -",
             show_header=True,
             header_style="bold magenta",
             title_style="bold cyan",

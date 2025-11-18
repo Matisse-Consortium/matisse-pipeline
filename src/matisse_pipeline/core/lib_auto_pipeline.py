@@ -12,6 +12,7 @@ match calibrations, and prepare recipe invocations for the automatic
 MATISSE data reduction pipeline.
 """
 
+import logging
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -23,6 +24,8 @@ from astropy.time import Time
 
 # Typing annotation (return of the matisse_calib function).
 CalibEntry = tuple[str, str]
+
+logger = logging.getLogger(__name__)
 
 
 class headerCache:
@@ -57,6 +60,8 @@ class headerCache:
 
 cacheHdr = headerCache()
 
+_warning_shown = False
+
 
 def matisse_calib(
     header: Mapping[str, Any],
@@ -87,6 +92,7 @@ def matisse_calib(
         considered complete, 0 otherwise).
     """
     global cacheHdr
+    global _warning_shown
 
     keyDetReadCurname = header["HIERARCH ESO DET READ CURNAME"]
     keyDetChipName = header["HIERARCH ESO DET CHIP NAME"]
@@ -391,57 +397,89 @@ def matisse_calib(
                     res.append((elt, tagCalib))
                     nbCalib += 1
 
-            if tagCalib == "OBS_FLATFIELD" and (
-                keyDetChipNameCalib == keyDetChipName
-                and keyDetReadCurnameCalib == keyDetReadCurname
-                and (
+            # Check for flatfield calibration map
+            # -----------------------------------
+            is_flatfield = tagCalib == "OBS_FLATFIELD"
+            if is_flatfield:
+                is_same_detector = keyDetChipNameCalib == keyDetChipName
+                is_same_mode = keyDetReadCurnameCalib == keyDetReadCurname
+                is_same_pil = keyInsPilId == keyInsPilIdCalib
+                is_same_resol = keyInsDilId == keyInsDilIdCalib
+
+                is_dit_matching = (
                     abs(keyDetSeq1DitCalib - keyDetSeq1Dit) < 0.001
                     or keyDetSeq1DitCalib == keyDetSeq1Period
                 )
-                and (
-                    (
-                        keyInsPilId == keyInsPilIdCalib
-                        and keyInsDilId == keyInsDilIdCalib
-                        and keyDetChipName == "HAWAII-2RG"
-                        and keyDetReadCurname == "SCI-FAST-SPEED"
-                    )
-                    or (
-                        keyInsPilId == keyInsPilIdCalib
-                        and keyInsDilId == keyInsDilIdCalib
-                        and keyDetChipName == "HAWAII-2RG"
-                        and keyDetReadCurname == "SCI-SLOW-SPEED"
-                        and keyDetMtrh2 == keyDetMtrh2Calib
-                        and keyDetMtrs2 == keyDetMtrs2Calib
-                    )
-                    or (
-                        keyInsPinId == keyInsPinIdCalib
-                        and keyInsDinId == keyInsDinIdCalib
-                        and keyDetChipName == "AQUARIUS"
-                    )
+
+                is_hawaii_fast = (
+                    is_same_pil
+                    and is_same_resol
+                    and keyDetChipName == "HAWAII-2RG"  # same detector
+                    and keyDetReadCurname == "SCI-FAST-SPEED"  # same mode
                 )
-            ):
-                idx = -1
-                cpt = 0
-                for elt2 in res:
-                    if elt2[1] == tagCalib:
-                        idx = cpt
-                    cpt += 1
-                if idx > -1:
-                    hdu = fits.open(res[idx][0])
-                    keyTplStartPrevious = hdu[0].header["HIERARCH ESO TPL START"]
-                    time_tplstartprevious = Time(
-                        keyTplStartPrevious, format="isot", scale="utc"
-                    )
-                    mjd_tplstartprevious = time_tplstartprevious.mjd
-                    hdu.close()
-                    if np.abs(mjd_tplstartcalib - mjd_tplstart) < np.abs(
-                        mjd_tplstartprevious - mjd_tplstart
-                    ):
-                        del res[idx]
+
+                is_hawaii_slow = (
+                    is_same_pil
+                    and is_same_resol
+                    and keyDetChipName == "HAWAII-2RG"
+                    and keyDetReadCurname == "SCI-SLOW-SPEED"
+                    and keyDetMtrh2 == keyDetMtrh2Calib
+                    and keyDetMtrs2 == keyDetMtrs2Calib
+                )
+
+                is_aquarius = (
+                    keyInsPinId == keyInsPinIdCalib
+                    and keyInsDinId == keyInsDinIdCalib
+                    and keyDetChipName == "AQUARIUS"
+                )
+
+                # Add check for different DIT (just warning info)
+                list_calib_no_good_dit = []
+                if is_flatfield and (
+                    is_same_detector
+                    and is_same_mode
+                    and (is_hawaii_fast or is_hawaii_slow or is_aquarius)
+                ):
+                    if elt not in list_calib_no_good_dit:
+                        list_calib_no_good_dit.append(
+                            [elt, keyDetSeq1DitCalib, keyDetSeq1Dit]
+                        )
+                        msg_dit = f"Different DIT detected for flatfield (cal={keyDetSeq1DitCalib}/sci={keyDetSeq1Dit} s)"
+                        if len(list_calib_no_good_dit) != 0:
+                            if not _warning_shown:
+                                logger.warning(msg_dit)
+                                _warning_shown = True
+
+                # Check real condition on flatfield
+
+                if (
+                    is_same_detector
+                    and is_same_mode
+                    and is_dit_matching
+                    and (is_hawaii_fast or is_hawaii_slow or is_aquarius)
+                ):
+                    idx = -1
+                    cpt = 0
+                    for elt2 in res:
+                        if elt2[1] == tagCalib:
+                            idx = cpt
+                        cpt += 1
+                    if idx > -1:
+                        hdu = fits.open(res[idx][0])
+                        keyTplStartPrevious = hdu[0].header["HIERARCH ESO TPL START"]
+                        time_tplstartprevious = Time(
+                            keyTplStartPrevious, format="isot", scale="utc"
+                        )
+                        mjd_tplstartprevious = time_tplstartprevious.mjd
+                        hdu.close()
+                        if np.abs(mjd_tplstartcalib - mjd_tplstart) < np.abs(
+                            mjd_tplstartprevious - mjd_tplstart
+                        ):
+                            del res[idx]
+                            res.append((elt, tagCalib))
+                    else:
                         res.append((elt, tagCalib))
-                else:
-                    res.append((elt, tagCalib))
-                    nbCalib += 1
+                        nbCalib += 1
 
             if tagCalib == "NONLINEARITY" and (
                 (
@@ -590,6 +628,7 @@ def matisse_calib(
                 status = 1
             else:
                 status = 0
+
         return res, status
 
     if action == "ACTION_MAT_EST_KAPPA":
@@ -761,15 +800,11 @@ def matisse_calib(
                     )
                     mjd_tplstartprevious = time_tplstartprevious.mjd
                     hdu.close()
-                    # print('tplstart = ',tplstart)
-                    # print('tpl start previous=',keyTplStartPrevious,' with delta time = ',np.abs(mjd_tplstartprevious-mjd_tplstart))
-                    # print('tpl start new=',keyTplStartCalib,' with delta time = ',np.abs(mjd_tplstartcalib-mjd_tplstart))
                     if np.abs(mjd_tplstartcalib - mjd_tplstart) < np.abs(
                         mjd_tplstartprevious - mjd_tplstart
                     ):
                         del res[idx]
                         res.append((elt, tagCalib))
-                        # print('elt = ',elt)
                 else:
                     res.append((elt, tagCalib))
                     nbCalib += 1

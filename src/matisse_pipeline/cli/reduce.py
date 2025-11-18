@@ -135,7 +135,8 @@ def reduce(
             check_blocks=check_blocks,
             check_calib=check_calib,
         )
-        log.info(f"[green][SUCCESS] Results saved to {dir_result}")
+        if not check_blocks:
+            log.info(f"[green][SUCCESS] Results saved to {dir_result}")
         console.rule("[bold green]Reduction completed successfully[/]")
     except Exception as err:
         console.rule("[bold red]Reduction failed[/]")

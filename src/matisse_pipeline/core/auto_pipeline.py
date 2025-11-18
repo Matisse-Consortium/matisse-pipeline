@@ -27,7 +27,6 @@ import numpy as np
 from astropy.io import fits
 from astropy.io.fits import getheader
 from astroquery.vizier import Vizier
-from rich.panel import Panel
 
 # --- MATISSE logging and console (imported from core) ---
 from rich.progress import Progress
@@ -185,7 +184,7 @@ def run_pipeline(
 
     allhdr = []
     failed_files = []
-    with Progress() as progress:
+    with Progress(console=console, transient=True) as progress:
         task = progress.add_task("[cyan]Reading FITS headers...", total=len(list_raw))
         for filename in list_raw:
             try:
@@ -300,7 +299,7 @@ def run_pipeline(
     list_target: list[str] = []  # NEW: add target lists
     log.info("Determining the number of reduction blocks...")
 
-    with Progress() as progress:
+    with Progress(console=console, transient=True) as progress:
         task = progress.add_task(
             "[cyan]Creating reduction blocks...", total=len(allhdr)
         )
@@ -464,7 +463,7 @@ def run_pipeline(
         # Fill the list of calib in the Reduction Blocks List from dirCalib
         log.info("Listing calibrations in the reduction blocks...")
 
-        with Progress() as progress:
+        with Progress(console=console, transient=True) as progress:
             task = progress.add_task(
                 "[cyan]Listing calibrations...",
                 total=len(list_red_blocks),
@@ -674,15 +673,15 @@ def run_pipeline(
                         f"Block {block_index}: {'✅ OK' if success else '❌ ERROR'}"
                     )
 
-        if check_blocks:
-            console.print(
-                Panel.fit(
-                    f"[green]Done:[/] {cptStatusOne - cptToProcess}  |  [yellow]To process:[/] {cptToProcess}  |  [red]Failed:[/] {cptStatusZero}",
-                    title="[bold]ESOREX[/]",
-                    border_style="green",
-                ),
-                justify="center",
-            )
+        # if check_blocks:
+        #     console.print(
+        #         Panel.fit(
+        #             f"[green]Done:[/] {cptStatusOne - cptToProcess}  |  [yellow]To process:[/] {cptToProcess}  |  [red]Failed:[/] {cptStatusZero}",
+        #             title="[bold]ESOREX[/]",
+        #             border_style="green",
+        #         ),
+        #         justify="center",
+        #     )
 
         # Add MDFC Fluxes to CALIB_RAW_INT and TARGET_RAW_INT
         list_oifits_files = glob.glob(repIter + "/*.rb/*_RAW_INT*.fits")
@@ -717,5 +716,4 @@ def run_pipeline(
         if show_blocs_status(
             listCmdEsorex, iterNumber, maxIter, list_red_blocks, check_blocks
         ):
-            log.info(f"end {len(listCmdEsorex)} {len(list_raw)}")
             break

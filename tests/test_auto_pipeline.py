@@ -15,6 +15,9 @@ from matisse_pipeline.core.utils import log_utils
 
 
 class _DummyProgress:
+    def __init__(self, *args, **kwargs):
+        pass
+
     def __enter__(self):
         return self
 
