@@ -2,12 +2,13 @@ import textwrap
 
 import typer
 
-from matisse_pipeline.cli import calibrate, format_results, reduce, show
+from matisse_pipeline.cli import calibrate, format_results, magic_numbers, reduce, show
 
 app = typer.Typer(help="MATISSE Data Reduction CLI")
 
 app.command(name="reduce")(reduce.reduce)
 app.command(name="calibrate")(calibrate.calibrate)
+app.command(name="magic_num")(magic_numbers.compute_magic_numbers)
 app.command(name="show")(show.show)
 
 doc = textwrap.dedent(format_results.format_results.__doc__ or "").strip()
