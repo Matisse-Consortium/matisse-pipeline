@@ -586,6 +586,7 @@ def test_show_calibration_status_outputs_table():
     stream = _reset_console()
     blocks = [
         {
+            "tplstart": "2024-01-01T00:00:00.AQUARIUS",
             "input": [
                 [
                     "frame.fits",
@@ -614,6 +615,7 @@ def test_show_calibration_status_detailed_block_lists_files():
     stream = _reset_console()
     blocks = [
         {
+            "tplstart": "2024-01-01T00:00:00.AQUARIUS",
             "input": [
                 [
                     "frame.fits",

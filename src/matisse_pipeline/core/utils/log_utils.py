@@ -171,7 +171,7 @@ def show_calibration_status(listRedBlocks, console, detailed_block: int | None =
         )
         return
 
-    _, block, _, _ = enriched_blocks[detailed_block - 1]
+    _, _, block, _, _ = enriched_blocks[detailed_block - 1]
 
     detail_table = Table(
         title=f"Calibrations for block #{detailed_block}",
