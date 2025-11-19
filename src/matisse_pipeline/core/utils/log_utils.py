@@ -116,7 +116,7 @@ def show_calibration_status(listRedBlocks, console, detailed_block: int | None =
     for tag in expected_tags:
         table.add_column(tag, justify="center")
 
-    detector_map = {}
+    detector_map: dict[str, set[str]] = {}
     for block in listRedBlocks:
         detector = get_detector_name(block)
         tags_present = {tag for _, tag in block["calib"]}
