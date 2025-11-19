@@ -148,6 +148,7 @@ def run_pipeline(
     spectralBinning: str = "",
     check_blocks: bool = False,
     check_calib: bool = False,
+    detailed_block: int | None = None,
 ):
     """Main function to run MATISSE automatic pipeline."""
 
@@ -497,8 +498,13 @@ def run_pipeline(
                 red_block["calib"] = calib
                 red_block["status"] = status
 
+        if detailed_block is not None:
+            check_calib = True
+
         if check_calib and iterNumber == maxIter:
-            show_calibration_status(list_red_blocks, console)
+            show_calibration_status(
+                list_red_blocks, console, detailed_block=detailed_block
+            )
             break
 
         # Create the SOF files

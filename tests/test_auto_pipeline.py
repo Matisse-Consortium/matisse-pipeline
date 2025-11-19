@@ -334,9 +334,9 @@ def test_run_pipeline_check_calibration_summary(
     original_show_calibration_status = auto_pipeline.show_calibration_status
     captured_blocks: list[auto_pipeline.RedBlock] = []
 
-    def capture_show_calibration_status(blocks, console):
+    def capture_show_calibration_status(blocks, console, **kwargs):
         captured_blocks.extend(blocks)
-        return original_show_calibration_status(blocks, console)
+        return original_show_calibration_status(blocks, console, **kwargs)
 
     monkeypatch.setattr(
         auto_pipeline, "show_calibration_status", capture_show_calibration_status

@@ -610,6 +610,35 @@ def test_show_calibration_status_outputs_table():
     assert "✅" in output
 
 
+def test_show_calibration_status_detailed_block_lists_files():
+    stream = _reset_console()
+    blocks = [
+        {
+            "input": [
+                [
+                    "frame.fits",
+                    "BADPIX",
+                    {
+                        "HIERARCH ESO DET CHIP NAME": "AQUARIUS",
+                        "ESO OBS TARG NAME": "CAL",
+                    },
+                ]
+            ],
+            "calib": [
+                ("/tmp/badpix.fits", "BADPIX"),
+                ("/tmp/flat.fits", "OBS_FLATFIELD"),
+            ],
+            "action": "ACTION_MAT_EST_KAPPA",
+        }
+    ]
+
+    log_utils.show_calibration_status(blocks, log_utils.console, detailed_block=1)
+    output = stream.getvalue()
+    assert "Calibrations for block #1" in output
+    assert "badpix.fits" in output
+    assert "flat.fits" in output
+
+
 def test_show_blocs_status_breaks_loop():
     stream = _reset_console()
     blocks = [
