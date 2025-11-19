@@ -80,8 +80,13 @@ def reduce(
     ),
     check_calib: bool = typer.Option(
         False,
-        "--check_cal",
+        "--check-cal",
         help="Check if calibration files already processed.",
+    ),
+    detailed_block: int | None = typer.Option(
+        None,
+        "--block-cal",
+        help="Show calibration filenames attached to the given reduction block number.",
     ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose mode"),
 ):
@@ -134,10 +139,13 @@ def reduce(
             spectralBinning=spectral_binning,
             check_blocks=check_blocks,
             check_calib=check_calib,
+            detailed_block=detailed_block,
         )
-        if not check_blocks:
+        if not check_blocks and not check_calib:
             log.info(f"[green][SUCCESS] Results saved to {dir_result}")
-        console.rule("[bold green]Reduction completed successfully[/]")
+            console.rule("[bold green]Reduction completed successfully[/]")
+        else:
+            console.rule("[bold green]Check mode: no files will be processed[/]")
     except Exception as err:
         console.rule("[bold red]Reduction failed[/]")
         log.exception("MATISSE pipeline execution failed.")
