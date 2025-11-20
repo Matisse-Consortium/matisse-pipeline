@@ -4,6 +4,7 @@ Centralized Rich-based logging and console utilities for the MATISSE pipeline.
 
 import logging
 import sys
+from pathlib import Path
 
 from rich.console import Console
 from rich.logging import RichHandler
@@ -81,7 +82,7 @@ def get_target_name(elt):
     return hdr.get("ESO OBS TARG NAME", "CAL FILE") if hdr else "N/A"
 
 
-def show_calibration_status(listRedBlocks, console):
+def show_calibration_status(listRedBlocks, console, detailed_block: int | None = None):
     """
     Display a minimal table: one line per calibration block,
     grouped by detector (AQUARIUS first, then HAWAII-2RG).
@@ -105,6 +106,7 @@ def show_calibration_status(listRedBlocks, console):
         title="Calibration Summary",
     )
 
+    table.add_column("TPL Start", justify="center", style="bold")
     table.add_column("Detector", justify="center", style="bold")
     table.add_column("Band", justify="center", style="magenta")
     table.add_column("Action", style="green")
@@ -114,7 +116,7 @@ def show_calibration_status(listRedBlocks, console):
     for tag in expected_tags:
         table.add_column(tag, justify="center")
 
-    detector_map = {}
+    detector_map: dict[str, set[str]] = {}
     for block in listRedBlocks:
         detector = get_detector_name(block)
         tags_present = {tag for _, tag in block["calib"]}
@@ -125,17 +127,19 @@ def show_calibration_status(listRedBlocks, console):
     for block in listRedBlocks:
         if not block:
             continue
+        tplstart = block["tplstart"]
         detector = get_detector_name(block)
         action = block.get("action", "")
-        enriched_blocks.append((detector, block, action, nblock))
+        enriched_blocks.append((tplstart, detector, block, action, nblock))
         nblock += 1
 
     # --- Sort by detectors
     # enriched_blocks.sort(key=lambda x: (x[2], x[0]))
-    for detector, block, action, nblock in enriched_blocks:
+    for tplstart, detector, block, action, nblock in enriched_blocks:
         tags_present = {tag for _, tag in block["calib"]}
 
         row = [
+            tplstart.split(".")[0],
             detector,
             bands.get(detector, "?"),
             action,
@@ -152,13 +156,49 @@ def show_calibration_status(listRedBlocks, console):
     console.print()
     console.print(table, justify="center")
 
+    if detailed_block is None:
+        return
+
+    if not enriched_blocks:
+        console.print(
+            "[yellow]No reduction blocks available for calibration details.[/]"
+        )
+        return
+
+    if detailed_block < 1 or detailed_block > len(enriched_blocks):
+        console.print(
+            f"[yellow]Block #{detailed_block} is out of range (available: 1-{len(enriched_blocks)}).[/]"
+        )
+        return
+
+    _, _, block, _, _ = enriched_blocks[detailed_block - 1]
+
+    detail_table = Table(
+        title=f"Calibrations for block #{detailed_block}",
+        show_header=True,
+        header_style="bold cyan",
+        expand=False,
+    )
+    detail_table.add_column("Tag", style="magenta")
+    detail_table.add_column("File", style="white")
+    detail_table.add_column("Path", style="dim")
+
+    if not block.get("calib"):
+        detail_table.add_row("—", "No calibration files", "")
+    else:
+        for filepath, tag in block["calib"]:
+            path = Path(filepath)
+            detail_table.add_row(tag, path.name, str(path))
+
+    console.print(detail_table, justify="center")
+
 
 def show_blocs_status(listCmdEsorex, iterNumber, maxIter, listRedBlocks, check_blocks):
     """Print table containing the different block informations."""
 
     if listCmdEsorex == [] or iterNumber == maxIter:
         table = Table(
-            title="- MATISSE final reduction summary -",
+            title="\n- MATISSE final reduction summary -",
             show_header=True,
             header_style="bold magenta",
             title_style="bold cyan",

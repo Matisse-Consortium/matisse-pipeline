@@ -22,7 +22,7 @@ def show(
     ),
 ):
     """
-    Display MATISSE OIFITS data (Step 1: fake data; Step 2: legacy parser integration).
+    Display MATISSE OIFITS data.
     """
     typer.echo("🔭 Launching MATISSE OIFITS viewer...")
 

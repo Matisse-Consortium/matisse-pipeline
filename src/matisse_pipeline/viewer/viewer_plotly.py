@@ -872,9 +872,8 @@ def plot_obs_groups(
     n_baselines = len(baseline_names)
     n_series = len(v2_series)
     n_groups = n_series // n_baselines
-    assert n_groups in (1, 4), f"Unexpected group count: {n_groups}"
 
-    alphas = [1.0, 0.7, 0.4, 0.1]
+    alphas = np.linspace(1.0, 0.1, n_groups)
     # Use only as many alpha values as groups
     alpha_levels = alphas[:n_groups]
 
@@ -987,9 +986,8 @@ def plot_closure_groups(
     n_triplets = len(triplet_names)
     n_series = len(obs_series)
     n_groups = n_series // n_triplets
-    assert n_groups in (1, 4), f"Unexpected group count: {n_groups}"
 
-    alphas = [1.0, 0.7, 0.4, 0.1]
+    alphas = np.linspace(1.0, 0.1, n_groups)
     alpha_levels = alphas[:n_groups]
 
     for t_idx, (tname, tcolor) in enumerate(

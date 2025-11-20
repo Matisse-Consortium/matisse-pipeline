@@ -6,6 +6,10 @@ This fixture automatically cleans up any temporary 'IterX' directories
 that no residual data remains in the working directory.
 """
 
+import matplotlib
+
+matplotlib.use("Agg")
+
 import shutil
 from itertools import combinations
 from pathlib import Path
@@ -207,3 +211,15 @@ def real_obs_sky(data_dir: Path) -> Path:
 def real_oifits(data_dir: Path) -> Path:
     """Return the path to the real reduced observation FITS file."""
     return data_dir / "real_data1.fits"
+
+
+@pytest.fixture(scope="session")
+def real_lamp_outout(data_dir: Path) -> Path:
+    """Return the path to the lamp out-out real observation FITS file."""
+    return data_dir / "fake_LAMP_noConf_IR-LM_LOW_OUT_OUT_noChop.fits"
+
+
+@pytest.fixture(scope="session")
+def real_lamp_inin(data_dir: Path) -> Path:
+    """Return the path to the lamp out-out real observation FITS file."""
+    return data_dir / "fake_LAMP_noConf_IR-LM_LOW_IN_IN_noChop.fits"
