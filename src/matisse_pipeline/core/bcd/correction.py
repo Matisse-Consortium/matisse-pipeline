@@ -373,7 +373,10 @@ def _process_file_pair(
         in_vis, n_bcd = filter_outliers_custom(
             in_vis, wavelength_window, thr_sigma, mjd
         )
-        log.info(f"OUT-OUT/{config.bcd_mode} = {n_out}/{n_bcd} outliers for file {mjd}")
+        if n_out > 0:
+            log.info(
+                f"OUT-OUT/{config.bcd_mode} = {n_out}/{n_bcd} outliers for file {mjd}"
+            )
 
         # Compute corrections
         # Mean correction (averaged over wavelength window and exposures)

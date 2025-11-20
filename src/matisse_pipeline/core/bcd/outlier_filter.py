@@ -2,7 +2,6 @@
 
 import numpy as np
 
-from matisse_pipeline.core.utils.log_utils import log
 from matisse_pipeline.types import FloatArray
 
 
@@ -10,7 +9,6 @@ def filter_outliers_custom(
     data: FloatArray,
     wavelength_range: tuple[int, int],
     threshold: float = 1.5,
-    mjd: str = "",
 ) -> tuple[FloatArray, int]:
     """
     Custom sigma-clipping for visibility data per baseline.
@@ -41,9 +39,6 @@ def filter_outliers_custom(
     # Average over wavelength window for outlier detection
     averaged = np.nanmean(data_filtered[:, :, wlow:whigh], axis=-1)
     if averaged.shape[0] <= 2:
-        log.warning(
-            f"Not enough exposures ({averaged.shape[0]}) for outlier filtering {mjd}"
-        )
         return data_filtered, n_outliers
 
     # Filter each baseline separately
