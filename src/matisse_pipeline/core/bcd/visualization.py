@@ -62,10 +62,10 @@ def _plot_mean_corrections(
     corrections_mean: FloatArray, config: BCDConfig
 ) -> plt.Figure:
     """Plot mean corrections per baseline."""
-    fig = plt.figure(figsize=(10, 6))
+    fig = plt.figure(figsize=(7, 4))
 
     # Plot all individual measurements
-    plt.plot(corrections_mean.T, c="b", alpha=0.3)
+    plt.plot(corrections_mean.T, c="#A2C8E8", alpha=0.3)
 
     # Plot median
     median = np.nanmedian(corrections_mean, axis=0)
@@ -79,12 +79,13 @@ def _plot_mean_corrections(
     plt.title("Mean BCD Corrections per Baseline")
     plt.legend()
     plt.grid(alpha=0.3)
+    plt.tight_layout()
     return fig
 
 
 def _plot_histograms(corrections_mean: FloatArray, config: BCDConfig) -> plt.Figure:
     """Plot histograms of mean corrections for each baseline."""
-    fig = plt.figure(figsize=(12, 8))
+    fig = plt.figure(figsize=(10, 6))
 
     for i in range(6):
         plt.subplot(3, 2, i + 1)
@@ -253,7 +254,7 @@ def _plot_combined_with_fits(
     # Modern color palette (inspired by Scientific Python 2025 trends)
     COLORS = {
         "data": "#2E86AB",  # Deep blue for data
-        "fit": "#A23B72",  # Purple-magenta for fit
+        "fit": "#D289CB",  # Purple-magenta for fit
         "uncertainty": "#2E86AB",  # Matching blue for uncertainty band
         "fit_window": "#F18F01",  # Warm orange for fit windows
         "grid": "#E8E8E8",  # Soft gray for grid
@@ -352,11 +353,11 @@ def _plot_combined_with_fits(
             ax.plot(
                 wavs_um[wdown:wup],
                 fitted_window,
-                color=COLORS["fit"],
+                color="k",
                 linestyle="--",
                 linewidth=1.8,
                 alpha=0.6,
-                zorder=1,
+                zorder=5,
             )
 
             ax.set_ylim(0, 2.5)
@@ -401,7 +402,7 @@ def _plot_combined_with_fits(
             wavs_um,
             fitted_full,
             color=COLORS["fit"],
-            linewidth=2.8,
+            linewidth=2,
             label="Polynomial fit",
             alpha=0.95,
             zorder=4,
