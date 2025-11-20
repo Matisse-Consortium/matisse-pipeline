@@ -21,7 +21,7 @@ def plot_corrections(
     poly_coef: FloatArray,
     config: BCDConfig,
     save_plots: bool = False,
-) -> None:
+) -> list[plt.Figure]:
     """
     Generate all diagnostic plots for BCD corrections.
 
@@ -45,27 +45,24 @@ def plot_corrections(
     # Convert wavelengths to microns for display
     wavs_um = wavelengths * 1e6
 
-    # Plot 1: Mean corrections by baseline
-    _plot_mean_corrections(corrections_mean, config)
-
-    # Plot 2: Histograms of mean corrections
-    _plot_histograms(corrections_mean, config)
-
-    # Plot 3: Spectral corrections with uncertainties
-    _plot_spectral_with_uncertainties(wavs_um, corrections_spectral, config)
-
-    # Plot 4: Combined baselines with polynomial fits
-    _plot_combined_with_fits(wavs_um, combined_spectral, poly_coef, config)
+    figures = [
+        _plot_mean_corrections(corrections_mean, config),
+        _plot_histograms(corrections_mean, config),
+        _plot_spectral_with_uncertainties(wavs_um, corrections_spectral, config),
+        _plot_combined_with_fits(wavs_um, combined_spectral, poly_coef, config),
+    ]
 
     if save_plots:
-        _save_all_plots(config.output_dir)
+        _save_all_plots(config.output_dir, figures)
 
-    plt.show()
+    return figures
 
 
-def _plot_mean_corrections(corrections_mean: FloatArray, config: BCDConfig) -> None:
+def _plot_mean_corrections(
+    corrections_mean: FloatArray, config: BCDConfig
+) -> plt.Figure:
     """Plot mean corrections per baseline."""
-    plt.figure(figsize=(10, 6))
+    fig = plt.figure(figsize=(10, 6))
 
     # Plot all individual measurements
     plt.plot(corrections_mean.T, c="b", alpha=0.3)
@@ -82,11 +79,12 @@ def _plot_mean_corrections(corrections_mean: FloatArray, config: BCDConfig) -> N
     plt.title("Mean BCD Corrections per Baseline")
     plt.legend()
     plt.grid(alpha=0.3)
+    return fig
 
 
-def _plot_histograms(corrections_mean: FloatArray, config: BCDConfig) -> None:
+def _plot_histograms(corrections_mean: FloatArray, config: BCDConfig) -> plt.Figure:
     """Plot histograms of mean corrections for each baseline."""
-    plt.figure(figsize=(12, 8))
+    fig = plt.figure(figsize=(12, 8))
 
     for i in range(6):
         plt.subplot(3, 2, i + 1)
@@ -99,38 +97,12 @@ def _plot_histograms(corrections_mean: FloatArray, config: BCDConfig) -> None:
         plt.grid(alpha=0.3)
 
     plt.tight_layout()
-
-
-def _plot_spectral_corrections(
-    wavs_um: FloatArray, corrections_spectral: FloatArray, config: BCDConfig
-) -> None:
-    """Plot spectral corrections for all files."""
-    plt.figure(figsize=(12, 10))
-
-    n_files, n_baselines, n_wav = corrections_spectral.shape
-
-    for i in range(6):
-        plt.subplot(3, 2, i + 1)
-
-        # Plot all individual spectra
-        plt.plot(wavs_um, corrections_spectral[:, i].T, c="b", alpha=0.1)
-
-        # Plot median
-        median = np.nanmedian(corrections_spectral[:, i], axis=0)
-        plt.plot(wavs_um, median, c="k", linewidth=2)
-
-        plt.ylim(0, 5)
-        plt.ylabel(f"OUT_OUT/{config.bcd_mode}")
-        plt.xlabel("Wavelength (μm)")
-        plt.title(f"Baseline {i}")
-        plt.grid(alpha=0.3)
-
-    plt.tight_layout()
+    return fig
 
 
 def _plot_spectral_with_uncertainties(
     wavs_um: FloatArray, corrections_spectral: FloatArray, config: BCDConfig
-) -> None:
+) -> plt.Figure:
     """Plot spectral corrections with uncertainty bands using modern styling."""
 
     # Modern color palette
@@ -264,6 +236,7 @@ def _plot_spectral_with_uncertainties(
         left=0.06, right=0.99, top=0.95, bottom=0.08, hspace=0.08, wspace=0.2
     )
     # plt.subplots_adjust(top=0.97)
+    return fig
 
 
 def _plot_combined_with_fits(
@@ -271,7 +244,7 @@ def _plot_combined_with_fits(
     combined_spectral: list[FloatArray],
     poly_coef: FloatArray,
     config: BCDConfig,
-) -> None:
+) -> plt.Figure:
     """
     Plot combined baselines with polynomial fits using modern styling.
 
@@ -514,14 +487,17 @@ def _plot_combined_with_fits(
     )
     plt.tight_layout()
     plt.subplots_adjust(top=0.88)
+    return fig
 
 
-def _save_all_plots(output_dir: Path) -> None:
-    """Save all currently open plots."""
-    figs = [plt.figure(n) for n in plt.get_fignums()]
+def _save_all_plots(output_dir: Path, figs: list[plt.Figure] | None = None) -> None:
+    """Persist diagnostic figures to PNG files."""
+    if figs is None:
+        figs = [plt.figure(n) for n in plt.get_fignums()]
 
-    year = str(output_dir).split("numbers")[1]
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
     for i, fig in enumerate(figs):
-        filename = output_dir / f"bcd_diagnostic_{year}_{i + 1}.png"
+        filename = output_dir / f"bcd_diagnostic_{i + 1}.png"
         fig.savefig(filename, dpi=300, bbox_inches="tight")
         logger.info(f"Saved plot to {filename}")

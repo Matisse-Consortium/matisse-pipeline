@@ -3,6 +3,7 @@
 import logging
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import typer
 from rich.panel import Panel
 from rich.progress import (
@@ -182,23 +183,14 @@ def compute_magic_numbers(
 
         if plot:
             console.print("[dim]Diagnostic plots displayed.[/dim]")
+            plt.show()
 
     except FileNotFoundError as e:
-        console.print(f"[bold red]✗[/bold red] Error: {e}", style="red")
         log.error(f"File not found: {e}")
         raise typer.Exit(code=1) from e
     except ValueError as e:
         console.print(f"[bold red]✗[/bold red] Invalid  {e}", style="red")
         log.error(f"Data error: {e}")
-        raise typer.Exit(code=1) from e
-    except Exception as e:
-        console.print(
-            f"[bold red]✗[/bold red] Error computing corrections: {e}",
-            style="red",
-        )
-        log.exception("Unexpected error during BCD computation")
-        if verbose:
-            console.print_exception()
         raise typer.Exit(code=1) from e
 
 

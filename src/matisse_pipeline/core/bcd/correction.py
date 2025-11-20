@@ -155,10 +155,11 @@ def compute_bcd_corrections(
     )
 
     # Generate plots if requested
+    figures = None
     if show_plots:
         from .visualization import plot_corrections
 
-        plot_corrections(
+        figures = plot_corrections(
             wavelengths=wavelengths,
             corrections_mean=corrections_mean_arr,
             corrections_spectral=corrections_spectral_arr,
@@ -177,6 +178,7 @@ def compute_bcd_corrections(
             "spectral": corrections_spectral_arr,
             "combined": combined_spectral,
             "wavelengths": wavelengths,
+            "figures": figures,
         },
     }
 
