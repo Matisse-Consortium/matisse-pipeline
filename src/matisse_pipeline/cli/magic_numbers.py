@@ -1,6 +1,7 @@
 """Compute BCD magic numbers from calibrator observations."""
 
 import logging
+from enum import Enum
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -16,8 +17,20 @@ from rich.progress import (
 )
 from rich.table import Table
 
+from matisse_pipeline.cli.reduce import Resolution
 from matisse_pipeline.core.bcd import BCDConfig, compute_bcd_corrections
 from matisse_pipeline.core.utils.log_utils import console, log
+
+
+class BCDMode(str, Enum):
+    IN_IN = "IN_IN"
+    OUT_IN = "OUT_IN"
+    IN_OUT = "IN_OUT"
+
+
+class SpectralBand(str, Enum):
+    LM = "LM"
+    N = "N"
 
 
 def compute_magic_numbers(
@@ -26,21 +39,21 @@ def compute_magic_numbers(
         help="One or more directories containing OIFITS files (e.g., /data/2019*/*_OIFITS).",
         exists=True,
     ),
-    bcd_mode: str = typer.Option(
-        "IN_IN",
+    bcd_mode: BCDMode = typer.Option(
+        BCDMode.IN_IN,
         "--bcd-mode",
         "-b",
-        help="BCD configuration to compute (IN_IN, OUT_IN, IN_OUT).",
+        help="BCD configuration to compute.",
     ),
-    band: str = typer.Option(
-        "LM",
+    band: SpectralBand = typer.Option(
+        SpectralBand.LM,
         "--band",
-        help="Spectral band (LM or N).",
+        help="Spectral band.",
     ),
-    resolution: str = typer.Option(
-        "LOW",
+    resolution: Resolution = typer.Option(
+        Resolution.LOW,
         "--resol",
-        help="Spectral resolution (LOW or HIGH).",
+        help="Spectral resolution.",
     ),
     extension: str = typer.Option(
         "OI_VIS2",
