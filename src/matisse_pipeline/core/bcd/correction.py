@@ -367,12 +367,8 @@ def _process_file_pair(
 
         mjd = out_hdul[0].header["DATE-OBS"]
 
-        out_vis, n_out = filter_outliers_custom(
-            out_vis, wavelength_window, thr_sigma, mjd
-        )
-        in_vis, n_bcd = filter_outliers_custom(
-            in_vis, wavelength_window, thr_sigma, mjd
-        )
+        out_vis, n_out = filter_outliers_custom(out_vis, wavelength_window, thr_sigma)
+        in_vis, n_bcd = filter_outliers_custom(in_vis, wavelength_window, thr_sigma)
         if n_out > 0:
             log.info(
                 f"OUT-OUT/{config.bcd_mode} = {n_out}/{n_bcd} outliers for file {mjd}"
