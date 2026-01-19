@@ -27,6 +27,7 @@ dependencies = [
     "astroquery>=0.4.11",
     "kaleido>=1.1.0",
     "matplotlib>=3.10.7",
+    "mplcursors>=0.7",
     "numpy>=2.2.6",
     "pandas>=2.3.3",
     "plotly>=6.3.1",

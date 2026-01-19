@@ -11,6 +11,8 @@ from astropy.io import fits
 from numpy.typing import NDArray
 
 from matisse_pipeline.core.utils.log_utils import log
+from matisse_pipeline.core.utils.oifits_reader import OIFitsReader
+from matisse_pipeline.viewer.viewer_plotly import build_blname_list
 
 from .config import BASELINE_PAIRS, BCD_BASELINE_MAP, BCDConfig
 from .outlier_filter import filter_outliers_custom
@@ -77,6 +79,10 @@ def compute_bcd_corrections(
     # Storage for corrections
     corrections_mean_list: list[FloatArray] = []  # VL in original
     corrections_spectral_list: list[FloatArray] = []  # VLwav in original
+    file_labels: list[str] = []  # Track file identifiers
+    target_names: list[str] = []  # Target names from OIFITS
+    tau0_values: list[float] = []  # Coherence time values
+    baseline_names: list[str] | None = None  # Baseline station names
     wavelengths: FloatArray | None = None
 
     # Process each file pair
@@ -90,13 +96,23 @@ def compute_bcd_corrections(
             )
 
         try:
-            # Read wavelengths from first file
+            # Read wavelengths and baseline names from first file
             if wavelengths is None:
                 with fits.open(bcd_path) as hdul:
                     wavelengths = np.asarray(
                         deepcopy(hdul[3].data["eff_wave"]), dtype=float
                     )
                     log.info(f"Wavelength array shape: {wavelengths.shape}")
+
+                # Extract baseline station names using OIFitsReader
+                if baseline_names is None:
+                    reader = OIFitsReader(bcd_path)
+                    oifits_data = reader.read()
+                    if oifits_data is not None:
+                        baseline_names = build_blname_list(oifits_data.to_dict())
+                        log.info(f"Baseline names: {baseline_names}")
+                    else:
+                        baseline_names = [f"Baseline {i}" for i in range(6)]
 
             with fits.open(bcd_path) as hdul:
                 wavelengths_later = np.asarray(
@@ -116,6 +132,20 @@ def compute_bcd_corrections(
             if corr_mean is not None and corr_spectral is not None:
                 corrections_mean_list.append(corr_mean)
                 corrections_spectral_list.append(corr_spectral)
+                # Extract meaningful identifier from filename (e.g., date-obs or file stem)
+                file_labels.append(
+                    bcd_path.stem.split("_")[0]
+                )  # First part of filename
+
+                # Extract target name and tau0 from OIFITS
+                reader = OIFitsReader(bcd_path)
+                oifits_data = reader.read()
+                if oifits_data is not None:
+                    target_names.append(oifits_data.target_name or "Unknown")
+                    tau0_values.append(oifits_data.tau0 * 1e3)
+                else:
+                    target_names.append("Unknown")
+                    tau0_values.append(0.0)
 
         except Exception as e:
             log.warning(f"Failed to process {bcd_path.name}: {e}")
@@ -167,6 +197,10 @@ def compute_bcd_corrections(
             poly_coef=result_poly_coef,
             config=config,
             save_plots=True,
+            file_labels=file_labels,
+            baseline_names=baseline_names,
+            target_names=target_names,
+            tau0_values=tau0_values,
         )
 
     return {

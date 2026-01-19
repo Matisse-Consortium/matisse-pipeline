@@ -21,6 +21,10 @@ def plot_corrections(
     poly_coef: FloatArray,
     config: BCDConfig,
     save_plots: bool = False,
+    file_labels: list[str] | None = None,
+    baseline_names: list[str] | None = None,
+    target_names: list[str] | None = None,
+    tau0_values: list[float] | None = None,
 ) -> list[plt.Figure]:
     """
     Generate all diagnostic plots for BCD corrections.
@@ -46,7 +50,14 @@ def plot_corrections(
     wavs_um = wavelengths * 1e6
 
     figures = [
-        _plot_mean_corrections(corrections_mean, config),
+        _plot_mean_corrections(
+            corrections_mean,
+            config,
+            file_labels,
+            baseline_names,
+            target_names,
+            tau0_values,
+        ),
         _plot_histograms(corrections_mean, config),
         _plot_spectral_with_uncertainties(wavs_um, corrections_spectral, config),
         _plot_combined_with_fits(wavs_um, combined_spectral, poly_coef, config),
@@ -59,26 +70,92 @@ def plot_corrections(
 
 
 def _plot_mean_corrections(
-    corrections_mean: FloatArray, config: BCDConfig
+    corrections_mean: FloatArray,
+    config: BCDConfig,
+    file_labels: list[str] | None = None,
+    baseline_names: list[str] | None = None,
+    target_names: list[str] | None = None,
+    tau0_values: list[float] | None = None,
 ) -> plt.Figure:
-    """Plot mean corrections per baseline."""
+    """Plot mean corrections per baseline with interactive file identification."""
     fig = plt.figure(figsize=(7, 4))
+    ax = plt.gca()
 
-    # Plot all individual measurements
-    plt.plot(corrections_mean.T, c="#A2C8E8", alpha=0.3)
+    # Plot all individual measurements with labels
+    lines = []
+    for i in range(corrections_mean.shape[0]):
+        label = file_labels[i] if file_labels else f"File {i + 1}"
+        line = ax.plot(corrections_mean[i], c="#A2C8E8", alpha=0.3, picker=5)[0]
+        line.set_label(label)
+        lines.append(line)
 
     # Plot median
     median = np.nanmedian(corrections_mean, axis=0)
-    plt.plot(median, c="k", linewidth=2, label="Median")
+    median_line = ax.plot(median, c="k", linewidth=2, label="Median", zorder=100)[0]
 
     plt.ylabel(
         f"Av OUT_OUT/{config.bcd_mode} {config.wavelength_low * 1e6:.1f}-{config.wavelength_high * 1e6:.1f} μm"
     )
     plt.xlabel("Baseline")
     plt.ylim(0.5, 1.8)
-    plt.title("Mean BCD Corrections per Baseline")
-    plt.legend()
+    plt.title("Mean BCD Corrections per Baseline (hover to identify)")
+
+    # Create legend with proper handles
+    if lines:
+        plt.legend([lines[0], median_line], ["Individual files", "Median"])
+
     plt.grid(alpha=0.3)
+
+    # Add interactive tooltips if mplcursors is available
+    try:
+        import mplcursors
+
+        cursor = mplcursors.cursor(lines, hover=True)
+
+        @cursor.connect("add")
+        def on_add(sel):
+            line_idx = lines.index(sel.artist)
+            label = file_labels[line_idx] if file_labels else f"File {line_idx + 1}"
+            baseline_idx = int(sel.target[0])
+            baseline_name = (
+                baseline_names[baseline_idx]
+                if baseline_names and baseline_idx < len(baseline_names)
+                else f"Baseline {baseline_idx}"
+            )
+
+            # Build tooltip text with quality indicator
+            tooltip_lines = [label, baseline_name]
+
+            if target_names and line_idx < len(target_names):
+                target = target_names[line_idx]
+                tooltip_lines.append(f"Target: {target}")
+
+            if tau0_values and line_idx < len(tau0_values):
+                tau0 = tau0_values[line_idx]
+                # Quality indicator based on tau0
+                if tau0 > 3.0:
+                    quality = "[Good]"
+                    edge_color = "#28a745"  # Green
+                elif tau0 > 1.5:
+                    quality = "[Medium]"
+                    edge_color = "#ffc107"  # Yellow/Orange
+                else:
+                    quality = "[Poor]"
+                    edge_color = "#dc3545"  # Red
+                tooltip_lines.append(f"tau0: {tau0:.2f} ms {quality}")
+            else:
+                edge_color = "#666666"
+
+            sel.annotation.set_text("\n".join(tooltip_lines))
+            sel.annotation.get_bbox_patch().set(
+                fc="white", alpha=0.95, edgecolor=edge_color, linewidth=2
+            )
+            sel.annotation.set_fontsize(9)
+    except ImportError:
+        logger.debug(
+            "mplcursors not available - install with 'pip install mplcursors' for interactive tooltips"
+        )
+
     plt.tight_layout()
     return fig
 
