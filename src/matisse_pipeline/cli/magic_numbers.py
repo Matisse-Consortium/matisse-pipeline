@@ -88,6 +88,11 @@ def compute_magic_numbers(
         "--poly-order",
         help="Polynome order to be fitted.",
     ),
+    tau0_min: float | None = typer.Option(
+        None,
+        "--tau0-min",
+        help="Minimum coherence time in ms (reject files below this threshold).",
+    ),
     chopping: bool = typer.Option(
         True,
         "--chopping/--no-chopping",
@@ -153,6 +158,7 @@ def compute_magic_numbers(
             wavelength_high=wavelength_high * 1e-6,
             correlated_flux=correlated_flux,
             poly_order=poly_order,
+            tau0_min=tau0_min,
         )
     except ValueError as e:
         console.print(f"[bold red]✗[/bold red] Configuration error: {e}", style="red")

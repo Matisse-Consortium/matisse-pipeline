@@ -67,6 +67,7 @@ def compute_bcd_corrections(
         band=config.band,
         resolution=config.resolution,
         chopping=chopping,
+        tau0_min=config.tau0_min,
     )
 
     if not file_pairs:
@@ -137,7 +138,7 @@ def compute_bcd_corrections(
                     bcd_path.stem.split("_")[0]
                 )  # First part of filename
 
-                # Extract target name and tau0 from OIFITS
+                # Extract target name and tau0 for visualization
                 reader = OIFitsReader(bcd_path)
                 oifits_data = reader.read()
                 if oifits_data is not None:
@@ -304,9 +305,10 @@ def _find_bcd_file_pairs(
     band: str = "LM",
     resolution: str = "LOW",
     chopping: bool = True,
+    tau0_min: float | None = None,
 ) -> list[tuple[Path, Path]]:
     """
-    Find matching pairs of (OUT_OUT, BCD) files.
+    Find matching pairs of (OUT_OUT, BCD) files with optional tau0 filtering.
 
     Parameters
     ----------
@@ -320,6 +322,8 @@ def _find_bcd_file_pairs(
         Spectral resolution
     chopping : bool
         Search for chopping files
+    tau0_min : float, optional
+        Minimum coherence time in ms (None = no filter)
 
     Returns
     -------
@@ -344,16 +348,36 @@ def _find_bcd_file_pairs(
 
     log.info(f"Found {len(bcd_files)} {bcd_mode} files")
 
-    # Create pairs with corresponding OUT_OUT files
+    # Create pairs with corresponding OUT_OUT files and apply tau0 filter
     pairs = []
+    rejected_count = 0
     for bcd_file in sorted(bcd_files):
         out_out_file = Path(str(bcd_file).replace(bcd_mode, "OUT_OUT"))
 
-        if out_out_file.exists():
-            pairs.append((out_out_file, bcd_file))
-        else:
+        if not out_out_file.exists():
             log.debug(f"OUT_OUT file not found for {bcd_file.name}")
+            continue
 
+        # Apply tau0 filter if configured
+        if tau0_min is not None:
+            reader = OIFitsReader(bcd_file)
+            oifits_data = reader.read()
+
+            if oifits_data is not None:
+                current_tau0 = oifits_data.tau0 * 1e3  # Convert to ms
+                current_target = oifits_data.target_name or "Unknown"
+
+                if current_tau0 < tau0_min:
+                    log.warning(
+                        f"Rejected {bcd_file.name}: tau0={current_tau0:.2f}ms < {tau0_min:.2f}ms (target: {current_target})"
+                    )
+                    rejected_count += 1
+                    continue
+
+        pairs.append((out_out_file, bcd_file))
+
+    if tau0_min is not None:
+        log.info(f"Rejected {rejected_count} files due to tau0 < {tau0_min:.2f}ms")
     log.info(f"Created {len(pairs)} valid (OUT_OUT, {bcd_mode}) file pairs")
     return pairs
 
