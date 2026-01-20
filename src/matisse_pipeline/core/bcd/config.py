@@ -25,7 +25,8 @@ class BCDConfig:
     resolution: str = "LOW"
     spectral_binlen: int = 118
 
-    # Wavelength window (meters)
+    # Wavelength range for BCD average computation (in meters)
+    # -> used to check the overall behavior in L band (average+std)
     wavelength_low: float = 3.3e-6
     wavelength_high: float = 3.8e-6
 

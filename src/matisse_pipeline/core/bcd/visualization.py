@@ -5,6 +5,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 
 from matisse_pipeline.types import FloatArray
 
@@ -25,6 +26,7 @@ def plot_corrections(
     baseline_names: list[str] | None = None,
     target_names: list[str] | None = None,
     tau0_values: list[float] | None = None,
+    bcd_mode: str | None = None,
 ) -> list[plt.Figure]:
     """
     Generate all diagnostic plots for BCD corrections.
@@ -64,7 +66,7 @@ def plot_corrections(
     ]
 
     if save_plots:
-        _save_all_plots(config.output_dir, figures)
+        _save_all_plots(config.output_dir, figures, bcd_mode)
 
     return figures
 
@@ -90,8 +92,16 @@ def _plot_mean_corrections(
         lines.append(line)
 
     # Plot median
-    median = np.nanmedian(corrections_mean, axis=0)
-    median_line = ax.plot(median, c="k", linewidth=2, label="Median", zorder=100)[0]
+    spectral_mean = np.nanmean(corrections_mean, axis=0)
+    spectral_std = np.nanstd(corrections_mean, axis=0)
+    mean_line = ax.errorbar(
+        range(len(spectral_mean)),
+        spectral_mean,
+        yerr=spectral_std,
+        fmt="o",
+        color="k",
+        zorder=101,
+    )
 
     plt.ylabel(
         f"Av OUT_OUT/{config.bcd_mode} {config.wavelength_low * 1e6:.1f}-{config.wavelength_high * 1e6:.1f} μm"
@@ -102,7 +112,7 @@ def _plot_mean_corrections(
 
     # Create legend with proper handles
     if lines:
-        plt.legend([lines[0], median_line], ["Individual files", "Median"])
+        plt.legend([lines[0], mean_line], ["Individual files", "Average"])
 
     plt.grid(alpha=0.3)
 
@@ -568,14 +578,143 @@ def _plot_combined_with_fits(
     return fig
 
 
-def _save_all_plots(output_dir: Path, figs: list[plt.Figure] | None = None) -> None:
-    """Persist diagnostic figures to PNG files."""
+def _save_all_plots(
+    output_dir: Path, figs: list[plt.Figure] | None = None, bcd_mode: str | None = None
+) -> None:
+    """Persist diagnostic figures to PNG files in diagnostic_plot subfolder."""
     if figs is None:
         figs = [plt.figure(n) for n in plt.get_fignums()]
 
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    # Create diagnostic_plot subfolder
+    diag_dir = Path(output_dir) / "diagnostic_plot"
+    diag_dir.mkdir(parents=True, exist_ok=True)
+
+    bcd_suffix = f"_{bcd_mode}" if bcd_mode else ""
     for i, fig in enumerate(figs):
-        filename = output_dir / f"bcd_diagnostic_{i + 1}.png"
+        filename = diag_dir / f"bcd_diagnostic{bcd_suffix}_{i + 1}.png"
         fig.savefig(filename, dpi=300, bbox_inches="tight")
         logger.info(f"Saved plot to {filename}")
+
+
+def plot_poly_corrections_results(
+    output_dir: str | Path, bcd_mode: str = "IN_IN"
+) -> None:
+    """
+    Plot BCD corrections and overlays from polynomial fit.
+
+    Parameters
+    ----------
+    output_dir : str | Path
+        Path to the output directory containing correction CSV files.
+    bcd_mode : str
+        BCD mode (e.g., "IN_IN", "IN_OUT", "OUT_IN"). Used to construct CSV filenames.
+    """
+    output_dir = Path(output_dir)
+    corrections_csv = output_dir / f"bcd_{bcd_mode}_spectral_corrections.csv"
+    poly_csv = output_dir / f"bcd_{bcd_mode}_poly_coeffs.csv"
+
+    df = pd.read_csv(corrections_csv)
+    poly_df = pd.read_csv(poly_csv)
+
+    # Extract baseline names (remove _std suffix)
+    baseline_names = []
+    for col in df.columns[1:]:  # Skip first column (index/wavelength)
+        if not col.endswith("_std"):
+            baseline_names.append(col)
+
+    # Check polynomial order from CSV columns
+    has_coef_x3 = "coef_x3" in poly_df.columns
+    poly_order = 3 if has_coef_x3 else 2
+
+    # Plot corrections for each baseline
+    fig, axes = plt.subplots(2, 3, figsize=(12, 7))
+    axes = axes.flatten()
+
+    x = df.iloc[:, 0] * 1e6  # Wavelength in micrometers
+
+    for idx, baseline in enumerate(baseline_names):
+        if idx < len(axes):
+            y = df[baseline]
+            y_std = df[f"{baseline}_std"]
+
+            # Plot with fill_between for error
+            axes[idx].plot(x, y, "-", linewidth=2, label="Correction", color="C0")
+            axes[idx].fill_between(
+                x, y - y_std, y + y_std, alpha=0.3, color="C0", label="±σ"
+            )
+
+            # Overlay polynomial fits from CSV mapping: direct on baseline_idx1
+            sub_direct = poly_df[poly_df["baseline_idx1"] == idx]
+            for _, row in sub_direct.iterrows():
+                x_fit = np.linspace(row["wl_start_um"], row["wl_end_um"], 200)
+                if poly_order == 3:
+                    y_fit = (
+                        row["coef_x3"] * x_fit**3
+                        + row["coef_x2"] * x_fit**2
+                        + row["coef_x1"] * x_fit
+                        + row["coef_x0"]
+                    )
+                else:  # poly_order == 2
+                    y_fit = (
+                        row["coef_x2"] * x_fit**2
+                        + row["coef_x1"] * x_fit
+                        + row["coef_x0"]
+                    )
+                if row["window"] == poly_df["window"].min():
+                    label = "Polynomial fit"
+                else:
+                    label = None
+                axes[idx].plot(
+                    x_fit,
+                    y_fit,
+                    "--",
+                    color="C1",
+                    linewidth=2,
+                    zorder=10,
+                    label=label,
+                )
+
+            # Inverse fits for rows where current baseline equals baseline_idx2
+            sub_inverse = poly_df[poly_df["baseline_idx2"] == idx]
+            for _, row in sub_inverse.iterrows():
+                x_fit = np.linspace(row["wl_start_um"], row["wl_end_um"], 200)
+                if poly_order == 3:
+                    y_fit = (
+                        row["coef_x3"] * x_fit**3
+                        + row["coef_x2"] * x_fit**2
+                        + row["coef_x1"] * x_fit
+                        + row["coef_x0"]
+                    )
+                else:  # poly_order == 2
+                    y_fit = (
+                        row["coef_x2"] * x_fit**2
+                        + row["coef_x1"] * x_fit
+                        + row["coef_x0"]
+                    )
+                y_fit = np.where(np.abs(y_fit) > 1e-12, 1.0 / y_fit, np.nan)
+                if row["window"] == 1:
+                    label = "Polynomial fit (inv)"
+                else:
+                    label = None
+                axes[idx].plot(
+                    x_fit,
+                    y_fit,
+                    "--",
+                    color="C3",
+                    linewidth=2,
+                    zorder=10,
+                    label=label,
+                )
+
+            axes[idx].set_title(f"Baseline: {baseline}")
+            axes[idx].set_xlabel("Wavelength (µm)")
+            axes[idx].set_ylabel("Magic number BCD correction")
+            axes[idx].grid(True, alpha=0.3)
+            axes[idx].legend(fontsize=8)
+
+    # Hide unused subplots
+    for idx in range(len(baseline_names), len(axes)):
+        axes[idx].set_visible(False)
+
+    plt.tight_layout()
+    return fig

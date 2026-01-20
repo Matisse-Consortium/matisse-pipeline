@@ -19,6 +19,7 @@ from rich.table import Table
 
 from matisse_pipeline.cli.reduce import Resolution
 from matisse_pipeline.core.bcd import BCDConfig, compute_bcd_corrections
+from matisse_pipeline.core.bcd.visualization import plot_poly_corrections_results
 from matisse_pipeline.core.utils.log_utils import console, log
 
 
@@ -34,9 +35,9 @@ class SpectralBand(str, Enum):
 
 
 def compute_magic_numbers(
-    input_dirs: list[Path] = typer.Argument(
-        ...,
-        help="One or more directories containing OIFITS files (e.g., /data/2019*/*_OIFITS).",
+    input_dirs: list[Path] | None = typer.Argument(
+        None,
+        help="One or more directories containing OIFITS files (e.g., /data/2019*/*_OIFITS). Required unless using --results-dir to plot existing results.",
         exists=True,
     ),
     bcd_mode: BCDMode = typer.Option(
@@ -76,12 +77,12 @@ def compute_magic_numbers(
     wavelength_low: float = typer.Option(
         3.3,
         "--wavelength-low",
-        help="Lower wavelength bound in microns.",
+        help="Lower wavelength bound in microns (for averaging computing).",
     ),
     wavelength_high: float = typer.Option(
         3.8,
         "--wavelength-high",
-        help="Upper wavelength bound in microns.",
+        help="Upper wavelength bound in microns (for averaging computing).",
     ),
     poly_order: int = typer.Option(
         2,
@@ -114,6 +115,16 @@ def compute_magic_numbers(
         "-v",
         help="Enable verbose logging.",
     ),
+    results_dir: Path | None = typer.Option(
+        None,
+        "--results-dir",
+        help="Existing results directory (CSV files) to plot without recomputing. Defaults to output-dir if not set.",
+        exists=True,
+        file_okay=False,
+        dir_okay=True,
+        resolve_path=True,
+        readable=True,
+    ),
 ) -> None:
     """
     Compute BCD magic numbers from MATISSE calibrator observations.
@@ -143,10 +154,27 @@ def compute_magic_numbers(
         )
     )
 
-    log.info(f"Processing {len(input_dirs)} input directories")
+    log.info(f"Processing {len(input_dirs or [])} input directories")
 
     # Create configuration
     try:
+        # Implicit plotting mode: if no input_dirs but a results_dir is provided
+        if not input_dirs and results_dir is not None:
+            log.info(
+                "No input dirs provided; plotting existing BCD corrections from %s (mode=%s)",
+                results_dir,
+                bcd_mode,
+            )
+            _plot_existing_or_exit(results_dir, bcd_mode.value, plot)
+            return
+
+        if not input_dirs:
+            console.print(
+                "[bold red]✗[/bold red] Missing input directories (required unless using --results-dir)",
+                style="red",
+            )
+            raise typer.Exit(code=1)
+
         config = BCDConfig(
             bcd_mode=bcd_mode.upper(),
             prefix=prefix.upper(),
@@ -180,7 +208,7 @@ def compute_magic_numbers(
             )
 
             results = compute_bcd_corrections(
-                folders=[str(d) for d in input_dirs],
+                folders=[str(d) for d in (input_dirs or [])],
                 config=config,
                 chopping=chopping,
                 show_plots=plot,
@@ -213,6 +241,28 @@ def compute_magic_numbers(
         raise typer.Exit(code=1) from e
 
 
+def _plot_existing_or_exit(target_dir: Path, bcd_mode: str, show: bool) -> None:
+    """Helper to plot existing CSVs with consistent error handling."""
+    try:
+        fig = plot_poly_corrections_results(output_dir=target_dir, bcd_mode=bcd_mode)
+        if show:
+            plt.show()
+        else:
+            plt.close(fig)
+    except FileNotFoundError as exc:
+        console.print(
+            f"[bold red]✗[/bold red] Missing CSV files in {target_dir}: {exc}",
+            style="red",
+        )
+        raise typer.Exit(code=1) from exc
+    except Exception as exc:  # pragma: no cover - defensive
+        console.print(
+            f"[bold red]✗[/bold red] Failed to plot corrections: {exc}", style="red"
+        )
+        log.exception("Failed to plot corrections")
+        raise typer.Exit(code=1) from exc
+
+
 def _display_results(
     results: dict,
     output_dir: Path,
@@ -232,13 +282,11 @@ def _display_results(
     table.add_column("Filename", style="green")
     table.add_column("Aver. magic numbers")
 
-    # Wavelength file
-    table.add_row("Wavelengths", results["wavelength_file"].name, "-")
+    # CSV output file
+    if results.get("csv_file") is not None:
+        table.add_row("CSV", results["csv_file"].name, "-")
 
-    aver_over_file = results["corrections"]["mean"].mean(axis=0)
-    # Correction files
-    for i, f in enumerate(results["correction_files"]):
-        table.add_row(f"Baseline {i}", f.name, str(round(aver_over_file[i], 2)))
+    # Already added CSV above
 
     console.print(table)
 
