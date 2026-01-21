@@ -68,11 +68,11 @@ def compute_magic_numbers(
         "-p",
         help="Prefix of the npy files to store magic numbers.",
     ),
-    output_dir: Path = typer.Option(
-        Path.cwd(),
+    output_dir: Path | None = typer.Option(
+        None,
         "--output-dir",
         "-o",
-        help="Output directory for correction files (default: current).",
+        help="Output directory for correction files (default: <prefix>_results in current directory).",
     ),
     wavelength_low: float = typer.Option(
         3.3,
@@ -85,7 +85,7 @@ def compute_magic_numbers(
         help="Upper wavelength bound in microns (for averaging computing).",
     ),
     poly_order: int = typer.Option(
-        2,
+        1,
         "--poly-order",
         help="Polynome order to be fitted.",
     ),
@@ -141,6 +141,11 @@ def compute_magic_numbers(
         level=log_level,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
+
+    # Set default output_dir based on prefix if not provided
+    if output_dir is None:
+        output_dir = Path.cwd() / f"{prefix.lower()}_results"
+        output_dir.mkdir(parents=True, exist_ok=True)
 
     # Display header
     console.print()
