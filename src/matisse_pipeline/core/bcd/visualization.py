@@ -598,7 +598,7 @@ def _save_all_plots(
 
 def plot_poly_corrections_results(
     output_dir: str | Path, bcd_mode: str = "IN_IN"
-) -> None:
+) -> plt.Figure:
     """
     Plot BCD corrections and overlays from polynomial fit.
 

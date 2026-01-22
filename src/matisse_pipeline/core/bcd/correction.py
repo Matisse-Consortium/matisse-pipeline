@@ -111,7 +111,10 @@ def compute_bcd_corrections(
                     reader = OIFitsReader(bcd_path)
                     oifits_data = reader.read()
                     if oifits_data is not None:
-                        baseline_names = reader.blname
+                        if oifits_data.blname.size > 0:
+                            baseline_names = [str(name) for name in oifits_data.blname]
+                        else:
+                            baseline_names = [f"Baseline {i}" for i in range(6)]
                         log.info(f"Baseline names: {baseline_names}")
                     else:
                         baseline_names = [f"Baseline {i}" for i in range(6)]
