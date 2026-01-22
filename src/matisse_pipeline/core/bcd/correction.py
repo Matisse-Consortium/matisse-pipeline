@@ -14,7 +14,6 @@ from numpy.typing import NDArray
 
 from matisse_pipeline.core.utils.log_utils import log
 from matisse_pipeline.core.utils.oifits_reader import OIFitsReader
-from matisse_pipeline.viewer.viewer_plotly import build_blname_list
 
 from .config import BASELINE_PAIRS, BCD_BASELINE_MAP, BCDConfig
 from .outlier_filter import filter_outliers_custom
@@ -112,7 +111,7 @@ def compute_bcd_corrections(
                     reader = OIFitsReader(bcd_path)
                     oifits_data = reader.read()
                     if oifits_data is not None:
-                        baseline_names = build_blname_list(oifits_data.to_dict())
+                        baseline_names = reader.blname
                         log.info(f"Baseline names: {baseline_names}")
                     else:
                         baseline_names = [f"Baseline {i}" for i in range(6)]
