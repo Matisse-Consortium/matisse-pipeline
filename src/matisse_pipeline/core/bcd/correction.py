@@ -237,12 +237,16 @@ def compute_bcd_corrections(
         "poly_csv_file": output_files.get("poly_csv"),
         "corrections": {
             "mean": corrections_mean_arr,
+            "mean_over_files": np.nanmean(corrections_mean_arr, axis=0),
+            "std_over_files": np.nanstd(corrections_mean_arr, axis=0),
             "spectral": corrections_spectral_arr,
             "combined": combined_spectral,
             "wavelengths": wavelengths,
             "figures": figures,
             "dataframe": corrections_df,
             "poly_coef": result_poly_coef,
+            "baseline_pairs": BASELINE_PAIRS.get(config.bcd_mode, []),
+            "baseline_names": baseline_names,
         },
     }
 
