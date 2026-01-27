@@ -1,6 +1,7 @@
 import re
 import subprocess
 
+import pytest
 from typer.testing import CliRunner
 
 from matisse_pipeline.cli import format_results as format_module, show as show_module
@@ -246,3 +247,54 @@ def test_show_cli_rejects_bad_extension(monkeypatch, real_oifits, tmp_path):
 
     assert result.exit_code == 1
     assert "Unsupported output format" in result.stdout
+
+
+@pytest.mark.parametrize("flag", ["--macports-probe", "--no-macports-probe"])
+def test_doctor_command_runs(flag):
+    """Ensure 'matisse doctor' command runs without crashing."""
+    result = runner.invoke(
+        app,
+        ["doctor", flag],
+        catch_exceptions=False,
+    )
+    # Exit code can be 0 (success) or 2 (esorex not found/configured)
+    # This test just ensures the command runs
+    assert result.exit_code in (0, 2), f"Unexpected exit code: {result.exit_code}"
+
+
+def test_doctor_command_with_verbose():
+    """Ensure 'matisse doctor' with verbose flag runs."""
+    result = runner.invoke(
+        app,
+        ["doctor", "--verbose", "--no-macports-probe"],
+        catch_exceptions=False,
+    )
+    assert result.exit_code in (0, 2), f"Unexpected exit code: {result.exit_code}"
+
+
+def test_doctor_command_with_no_require_any():
+    """Ensure 'matisse doctor' with --no-require-any flag runs."""
+    result = runner.invoke(
+        app,
+        ["doctor", "--no-require-any", "--no-macports-probe"],
+        catch_exceptions=False,
+    )
+    assert result.exit_code in (0, 2), f"Unexpected exit code: {result.exit_code}"
+
+
+def test_doctor_command_esorex_not_found(monkeypatch):
+    """Ensure 'matisse doctor' handles missing esorex gracefully."""
+    from matisse_pipeline.cli import doctor as doctor_module
+
+    # Mock shutil.which to return None (esorex not found)
+    monkeypatch.setattr(doctor_module.shutil, "which", lambda cmd: None)
+
+    result = runner.invoke(
+        app,
+        ["doctor"],
+        catch_exceptions=False,
+    )
+    # Should exit with code 2 (fatal error)
+    assert result.exit_code == 2, f"Unexpected exit code: {result.exit_code}"
+    # Should mention esorex not found
+    assert "esorex" in result.output.lower()
