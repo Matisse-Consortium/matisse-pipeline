@@ -47,6 +47,7 @@ class OIFitsData:
     tel_name: np.ndarray = field(default_factory=lambda: np.array([]))
     sta_name: np.ndarray = field(default_factory=lambda: np.array([]))
     sta_index: np.ndarray = field(default_factory=lambda: np.array([]))
+    blname: np.ndarray = field(default_factory=lambda: np.array([]))
 
     # Interferometric data tables (all optional)
     vis: dict[str, np.ndarray] | None = None
@@ -178,6 +179,7 @@ class OIFitsReader:
             t3=self._read_t3_table(),
             flux=self._read_flux_table(),
             tf2=self._read_tf2_table(),
+            blname=self._build_blname_table(),
         )
 
         return data
@@ -461,6 +463,53 @@ class OIFitsReader:
         except KeyError:
             logger.debug(f"No TF2 table in {self.file_path}")
             return None
+
+    def _build_blname_table(self) -> np.ndarray:
+        """
+        Build an array of baseline names from station indices in VIS2 data.
+
+        Uses the actual baseline pairs from VIS2 table rather than all combinations,
+        matching the order of baselines in the interferometric data.
+
+        Returns:
+            Array of baseline names (e.g., ["A0-G1", "K0-J1"]) or empty array if failed.
+        """
+        try:
+            hdu = self._ensure_hdu()
+
+            # Get station information
+            array_ext = hdu["OI_ARRAY"]
+            array_table = cast("fits.FITS_rec | None", array_ext.data)
+            if array_table is None:
+                raise KeyError("OI_ARRAY data missing")
+
+            sta_index = np.asarray(array_table["STA_INDEX"])
+            sta_names = np.asarray(array_table["STA_NAME"])
+            n_telescopes = len(sta_index)
+            n_baseline = n_telescopes * (n_telescopes - 1) // 2
+
+            # Create mapping from station index to station name
+            ref_station = {sta_index[i]: sta_names[i] for i in range(n_telescopes)}
+
+            # Get baseline pairs from VIS2 table
+            vis2_ext = hdu["OI_VIS2"]
+            vis2_table = cast("fits.FITS_rec | None", vis2_ext.data)
+            if vis2_table is None:
+                raise KeyError("OI_VIS2 data missing")
+
+            all_sta_index = np.asarray(vis2_table["STA_INDEX"])[:n_baseline]
+
+            # Build baseline names from actual pairs
+            baseline_names = np.empty(n_baseline, dtype="U16")
+            for i, pair in enumerate(all_sta_index):
+                bl1, bl2 = pair
+                baseline_names[i] = f"{ref_station[bl1]}-{ref_station[bl2]}"
+
+            return baseline_names
+
+        except KeyError as e:
+            logger.debug(f"Could not build baseline names for {self.file_path}: {e}")
+            return np.array([])
 
 
 # Backward compatibility function

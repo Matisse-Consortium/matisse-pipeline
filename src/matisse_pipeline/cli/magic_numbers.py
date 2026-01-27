@@ -19,6 +19,7 @@ from rich.table import Table
 
 from matisse_pipeline.cli.reduce import Resolution
 from matisse_pipeline.core.bcd import BCDConfig, compute_bcd_corrections
+from matisse_pipeline.core.bcd.visualization import plot_poly_corrections_results
 from matisse_pipeline.core.utils.log_utils import console, log
 
 
@@ -26,6 +27,7 @@ class BCDMode(str, Enum):
     IN_IN = "IN_IN"
     OUT_IN = "OUT_IN"
     IN_OUT = "IN_OUT"
+    ALL = "ALL"
 
 
 class SpectralBand(str, Enum):
@@ -34,9 +36,9 @@ class SpectralBand(str, Enum):
 
 
 def compute_magic_numbers(
-    input_dirs: list[Path] = typer.Argument(
-        ...,
-        help="One or more directories containing OIFITS files (e.g., /data/2019*/*_OIFITS).",
+    input_dirs: list[Path] | None = typer.Argument(
+        None,
+        help="One or more directories containing OIFITS files (e.g., /data/2019*/*_OIFITS). Required unless using --results-dir to plot existing results.",
         exists=True,
     ),
     bcd_mode: BCDMode = typer.Option(
@@ -67,29 +69,34 @@ def compute_magic_numbers(
         "-p",
         help="Prefix of the npy files to store magic numbers.",
     ),
-    output_dir: Path = typer.Option(
-        Path.cwd(),
+    output_dir: Path | None = typer.Option(
+        None,
         "--output-dir",
         "-o",
-        help="Output directory for correction files (default: current).",
+        help="Output directory for correction files (default: <prefix>_results in current directory).",
     ),
     wavelength_low: float = typer.Option(
         3.3,
         "--wavelength-low",
-        help="Lower wavelength bound in microns.",
+        help="Lower wavelength bound in microns (for averaging computing).",
     ),
     wavelength_high: float = typer.Option(
         3.8,
         "--wavelength-high",
-        help="Upper wavelength bound in microns.",
+        help="Upper wavelength bound in microns (for averaging computing).",
     ),
     poly_order: int = typer.Option(
-        2,
+        1,
         "--poly-order",
         help="Polynome order to be fitted.",
     ),
+    tau0_min: float | None = typer.Option(
+        None,
+        "--tau0-min",
+        help="Minimum coherence time in ms (reject files below this threshold).",
+    ),
     chopping: bool = typer.Option(
-        True,
+        False,
         "--chopping/--no-chopping",
         help="Use chopping files.",
     ),
@@ -109,6 +116,16 @@ def compute_magic_numbers(
         "-v",
         help="Enable verbose logging.",
     ),
+    results_dir: Path | None = typer.Option(
+        None,
+        "--results-dir",
+        help="Existing results directory (CSV files) to plot without recomputing. Defaults to output-dir if not set.",
+        exists=True,
+        file_okay=False,
+        dir_okay=True,
+        resolve_path=True,
+        readable=True,
+    ),
 ) -> None:
     """
     Compute BCD magic numbers from MATISSE calibrator observations.
@@ -126,72 +143,110 @@ def compute_magic_numbers(
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
 
+    # Set default output_dir based on prefix if not provided
+    if output_dir is None:
+        output_dir = Path.cwd() / f"{prefix.lower()}_results"
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Determine which modes to process
+    modes_to_process = (
+        [BCDMode.IN_IN, BCDMode.OUT_IN, BCDMode.IN_OUT]
+        if bcd_mode == BCDMode.ALL
+        else [bcd_mode]
+    )
+
     # Display header
     console.print()
     console.print(
         Panel.fit(
             "[bold cyan]BCD Magic Numbers Computation[/bold cyan]\n"
-            f"Mode: [yellow]{bcd_mode}[/yellow] | "
-            f"Band: [yellow]{band}[/yellow] | "
-            f"Resolution: [yellow]{resolution}[/yellow]",
+            f"Mode: [yellow]{bcd_mode.value}[/yellow] | "
+            f"Band: [yellow]{band.value}[/yellow] | "
+            f"Resolution: [yellow]{resolution.value}[/yellow]",
             border_style="cyan",
         )
     )
 
-    log.info(f"Processing {len(input_dirs)} input directories")
+    log.info(
+        f"Processing {len(input_dirs or [])} input directories with {len(modes_to_process)} mode(s)"
+    )
 
     # Create configuration
     try:
-        config = BCDConfig(
-            bcd_mode=bcd_mode.upper(),
-            prefix=prefix.upper(),
-            band=band.upper(),
-            resolution=resolution.upper(),
-            extension=extension.upper(),
-            output_dir=output_dir,
-            wavelength_low=wavelength_low * 1e-6,  # Convert to meters
-            wavelength_high=wavelength_high * 1e-6,
-            correlated_flux=correlated_flux,
-            poly_order=poly_order,
-        )
-    except ValueError as e:
-        console.print(f"[bold red]✗[/bold red] Configuration error: {e}", style="red")
-        raise typer.Exit(code=1) from e
+        # Implicit plotting mode: if no input_dirs but a results_dir is provided
+        if not input_dirs and results_dir is not None:
+            log.info(
+                "No input dirs provided; plotting existing BCD corrections from %s (mode=%s)",
+                results_dir,
+                bcd_mode.value,
+            )
+            _plot_existing_or_exit(results_dir, bcd_mode.value, plot)
+            return
 
-    # Compute corrections with progress tracking
-    try:
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TaskProgressColumn(),
-            TimeRemainingColumn(),
-            console=console,
-        ) as progress:
-            task = progress.add_task(
-                f"[cyan]Computing {bcd_mode} corrections...",
-                total=None,
+        if not input_dirs:
+            console.print(
+                "[bold red]✗[/bold red] Missing input directories (required unless using --results-dir)",
+                style="red",
+            )
+            raise typer.Exit(code=1)
+
+        # Process each mode
+        all_results = {}
+        for current_mode in modes_to_process:
+            log.info(f"Processing mode: {current_mode.value}")
+
+            config = BCDConfig(
+                bcd_mode=current_mode.value,
+                prefix=prefix.upper(),
+                band=band.value,
+                resolution=resolution.value,
+                extension=extension.upper(),
+                output_dir=output_dir,
+                wavelength_low=wavelength_low * 1e-6,  # Convert to meters
+                wavelength_high=wavelength_high * 1e-6,
+                correlated_flux=correlated_flux,
+                poly_order=poly_order,
+                tau0_min=tau0_min,
             )
 
-            results = compute_bcd_corrections(
-                folders=[str(d) for d in input_dirs],
-                config=config,
-                chopping=chopping,
-                show_plots=plot,
-                progress=progress,
-                task_id=task,
-            )
+            # Compute corrections with progress tracking
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                TaskProgressColumn(),
+                TimeRemainingColumn(),
+                console=console,
+            ) as progress:
+                task = progress.add_task(
+                    f"[cyan]Computing {current_mode.value} corrections...",
+                    total=None,
+                )
 
-            progress.update(task, completed=True, total=1)
+                results = compute_bcd_corrections(
+                    folders=[str(d) for d in (input_dirs or [])],
+                    config=config,
+                    chopping=chopping,
+                    show_plots=plot,
+                    progress=progress,
+                    task_id=task,
+                )
 
-        # Display results table
-        _display_results(results, output_dir, config)
+                progress.update(task, completed=True, total=1)
+
+            all_results[current_mode.value] = (results, config)
+
+        # Display results for all modes
+        for mode_name, (results, config) in all_results.items():
+            console.print()
+            console.print(f"[bold cyan]Results for mode: {mode_name}[/bold cyan]")
+            _display_results(results, output_dir, config)
 
         # Success message
         console.print()
         console.print(
             f"[bold green]✓[/bold green] Successfully processed "
-            f"{results['n_files']} file pairs"
+            f"{len(all_results)} mode(s)"
         )
 
         if plot:
@@ -202,9 +257,31 @@ def compute_magic_numbers(
         log.error(f"File not found: {e}")
         raise typer.Exit(code=1) from e
     except ValueError as e:
-        console.print(f"[bold red]✗[/bold red] Invalid  {e}", style="red")
+        console.print(f"[bold red]✗[/bold red] Configuration error: {e}", style="red")
         log.error(f"Data error: {e}")
         raise typer.Exit(code=1) from e
+
+
+def _plot_existing_or_exit(target_dir: Path, bcd_mode: str, show: bool) -> None:
+    """Helper to plot existing CSVs with consistent error handling."""
+    try:
+        fig = plot_poly_corrections_results(output_dir=target_dir, bcd_mode=bcd_mode)
+        if show:
+            plt.show()
+        else:
+            plt.close(fig)
+    except FileNotFoundError as exc:
+        console.print(
+            f"[bold red]✗[/bold red] Missing CSV files in {target_dir}: {exc}",
+            style="red",
+        )
+        raise typer.Exit(code=1) from exc
+    except Exception as exc:  # pragma: no cover - defensive
+        console.print(
+            f"[bold red]✗[/bold red] Failed to plot corrections: {exc}", style="red"
+        )
+        log.exception("Failed to plot corrections")
+        raise typer.Exit(code=1) from exc
 
 
 def _display_results(
@@ -213,32 +290,55 @@ def _display_results(
     config: BCDConfig,
 ) -> None:
     """Display computation results in a formatted table."""
-    console.print()
 
+    # Averaged magic numbers
+    if results.get("corrections") is not None:
+        aver = results["corrections"]["mean_over_files"]
+        std = results["corrections"]["std_over_files"]
+        aver_str = [f"{aver[i]:.2f}±{std[i]:.2f}" for i in range(len(aver))]
+        baseline_pairs = results["corrections"]["baseline_pairs"]
+        baseline_names = results["corrections"]["baseline_names"]
+
+    aff_bl1 = baseline_pairs[0][0]
+    aff_bl2 = baseline_pairs[1][0]
+
+    rev_aff_bl1 = baseline_pairs[0][1]
+    rev_aff_bl2 = baseline_pairs[1][1]
     # Files table
     table = Table(
-        title="Generated Files",
         show_header=True,
-        header_style="bold magenta",
+        header_style="bold white",
         border_style="cyan",
     )
-    table.add_column("Type", style="cyan", width=15)
-    table.add_column("Filename", style="green")
-    table.add_column("Aver. magic numbers")
+    table.add_column("Filename", style="white")
+    for i in range(6):
+        style = "white"
+        if i in (aff_bl1, aff_bl2):
+            style = "green"
+        elif i in (rev_aff_bl1, rev_aff_bl2):
+            style = "yellow"
+        table.add_column(f"Aver. MN BL {i + 1}", style=style)
 
-    # Wavelength file
-    table.add_row("Wavelengths", results["wavelength_file"].name, "-")
+    # CSV output file
+    if results.get("csv_file") is not None:
+        table.add_row(results["csv_file"].name, *aver_str)
 
-    aver_over_file = results["corrections"]["mean"].mean(axis=0)
-    # Correction files
-    for i, f in enumerate(results["correction_files"]):
-        table.add_row(f"Baseline {i}", f.name, str(round(aver_over_file[i], 2)))
+    # Already added CSV above
 
     console.print(table)
 
     # Summary info
-    console.print()
     console.print(f"[bold]Output directory:[/bold] {output_dir}")
+    console.print(
+        "Affected baselines: "
+        + f"{aff_bl1 + 1} [green]({baseline_names[aff_bl1]})[/green]"
+        + " [white]<->[/white] "
+        + f"{rev_aff_bl1 + 1} [yellow]({baseline_names[rev_aff_bl1]})[/yellow]"
+        + " ; "
+        + f"{aff_bl2 + 1} [green]({baseline_names[aff_bl2]})[/green]"
+        + " [white]<->[/white] "
+        + f"{rev_aff_bl2 + 1} [yellow]({baseline_names[rev_aff_bl2]})[/yellow]"
+    )
     console.print(
         f"[bold]BCD mode:[/bold] {config.bcd_mode} | "
         f"[bold]Band:[/bold] {config.band} | "

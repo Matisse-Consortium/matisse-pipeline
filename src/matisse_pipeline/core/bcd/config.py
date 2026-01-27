@@ -25,13 +25,15 @@ class BCDConfig:
     resolution: str = "LOW"
     spectral_binlen: int = 118
 
-    # Wavelength window (meters)
+    # Wavelength range for BCD average computation (in meters)
+    # -> used to check the overall behavior in L band (average+std)
     wavelength_low: float = 3.3e-6
     wavelength_high: float = 3.8e-6
 
     # Filtering
     correlated_flux: bool = False
     outlier_threshold: float = 1.5
+    tau0_min: float | None = None  # Minimum coherence time in ms (None = no filter)
 
     # Fit magic numbers
     poly_order: int = 1
