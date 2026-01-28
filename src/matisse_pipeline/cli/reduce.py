@@ -8,6 +8,10 @@ from pathlib import Path
 
 import typer
 
+from matisse_pipeline.cli.doctor import (
+    _get_env_recipe_dirs,
+    find_matisse_recipe_dir,
+)
 from matisse_pipeline.core.auto_pipeline import (
     run_pipeline,
 )
@@ -17,8 +21,6 @@ from matisse_pipeline.core.utils.log_utils import (
     section,
     set_verbosity,
 )
-
-# app = typer.Typer(help="Reduce MATISSE raw data automatically.")
 
 
 class Resolution(str, Enum):
@@ -110,6 +112,7 @@ def reduce(
     console.print(f"[cyan]Raw data directory:[/] {datadir.resolve()}")
     console.print(f"[cyan]Calibration directory:[/] {calibdir.resolve()}")
     console.print(f"[cyan]Result directory:[/] {resultdir.resolve()}")
+    _show_recipe_info()
     console.print(f"[magenta]CPU cores:[/] {nbcore}")
     console.print(f"[green]Resolution:[/] {resol.value}")
     console.print(f"[yellow]Max iterations:[/] {max_iter}")
@@ -153,13 +156,26 @@ def reduce(
         raise typer.Exit(code=1) from err
 
 
-# # -------------------------
-# # Main entrypoint
-# # -------------------------
-# def main():
-#     """CLI entrypoint for MATISSE pipeline reduction."""
-#     app()
+def _show_recipe_info() -> None:
+    """Display MATISSE recipe directory and available recipes."""
+    # Check for ESOREX_PLUGIN_DIR environment variable first
+    env_dirs = _get_env_recipe_dirs()
+    if env_dirs:
+        console.print(
+            f"[cyan]Pipeline recipe path (from ESOREX_PLUGIN_DIR):[/] {':'.join(str(d) for d in env_dirs)}"
+        )
+    else:
+        # Find MATISSE recipe directory
+        probe = find_matisse_recipe_dir(extra_candidates=[], verbose=False)
 
-
-# if __name__ == "__main__":
-#     main()
+        if probe:
+            console.print(f"[cyan]Pipeline recipes directory:[/] {probe.recipe_dir}")
+            console.print(
+                f"[cyan]Available MATISSE recipes:[/] {len(probe.matisse_recipes)} found"
+            )
+        else:
+            console.print(
+                "[bold red]⚠️ Error: No MATISSE recipes found.[/] "
+                "Set ESOREX_PLUGIN_DIR or use --recipe-dir in doctor command."
+            )
+            return None
