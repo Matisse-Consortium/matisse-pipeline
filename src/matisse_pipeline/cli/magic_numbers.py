@@ -42,7 +42,7 @@ def compute_magic_numbers(
         exists=True,
     ),
     bcd_mode: BCDMode = typer.Option(
-        BCDMode.ALL,
+        BCDMode.IN_IN,
         "--bcd-mode",
         "-b",
         help="BCD configuration to compute.",
