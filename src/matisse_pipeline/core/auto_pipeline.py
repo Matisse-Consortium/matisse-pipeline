@@ -125,7 +125,7 @@ def run_esorex(args):
         console.print(
             f"[green]Block {block_index} completed {status}[/]"
             if ret == 0
-            else f"[red]Block {block_index} failed {status}[/]"
+            else f"[red]Block {block_index} failed {status}[/]\nSee {err} for details."
         )
 
     return block_index, ret == 0
@@ -149,6 +149,7 @@ def run_pipeline(
     check_blocks: bool = False,
     check_calib: bool = False,
     detailed_block: int | None = None,
+    custom_recipes_dir: Path | None = None,
 ):
     """Main function to run MATISSE automatic pipeline."""
 
@@ -424,6 +425,7 @@ def run_pipeline(
             )
             red_block["action"] = action
             red_block["recipes"] = recipes
+
             if action == "ACTION_MAT_RAW_ESTIMATES":
                 if hdr["HIERARCH ESO DET CHIP NAME"] == "AQUARIUS":
                     if spectralBinning != "":
@@ -618,18 +620,35 @@ def run_pipeline(
                     red_block["param"].replace("/", " --")
                 )
 
-                cmd = (
-                    "esorex --output-dir="
-                    + outputDir
-                    + " "
-                    + red_block["recipes"]
-                    + " "
-                    + listNewParams
-                    + " "
-                    + sofname
-                    + "%"
-                    + resol
-                )
+                if custom_recipes_dir is None:
+                    cmd = (
+                        "esorex --output-dir="
+                        + outputDir
+                        + " "
+                        + red_block["recipes"]
+                        + " "
+                        + listNewParams
+                        + " "
+                        + sofname
+                        + "%"
+                        + resol
+                    )
+                else:
+                    cmd = (
+                        "esorex --output-dir="
+                        + outputDir
+                        + " "
+                        + " --recipe-dir="
+                        + str(custom_recipes_dir)
+                        + " "
+                        + red_block["recipes"]
+                        + " "
+                        + listNewParams
+                        + " "
+                        + sofname
+                        + "%"
+                        + resol
+                    )
                 if iterNumber > 1:
                     sofnamePrev = (
                         repIterPrev
@@ -678,16 +697,6 @@ def run_pipeline(
                     console.print(
                         f"Block {block_index}: {'✅ OK' if success else '❌ ERROR'}"
                     )
-
-        # if check_blocks:
-        #     console.print(
-        #         Panel.fit(
-        #             f"[green]Done:[/] {cptStatusOne - cptToProcess}  |  [yellow]To process:[/] {cptToProcess}  |  [red]Failed:[/] {cptStatusZero}",
-        #             title="[bold]ESOREX[/]",
-        #             border_style="green",
-        #         ),
-        #         justify="center",
-        #     )
 
         # Add MDFC Fluxes to CALIB_RAW_INT and TARGET_RAW_INT
         list_oifits_files = glob.glob(repIter + "/*.rb/*_RAW_INT*.fits")
