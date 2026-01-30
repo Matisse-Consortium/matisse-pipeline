@@ -42,7 +42,7 @@ def compute_magic_numbers(
         exists=True,
     ),
     bcd_mode: BCDMode = typer.Option(
-        BCDMode.IN_IN,
+        BCDMode.ALL,
         "--bcd-mode",
         "-b",
         help="BCD configuration to compute.",
@@ -75,15 +75,10 @@ def compute_magic_numbers(
         "-o",
         help="Output directory for correction files (default: <prefix>_results in current directory).",
     ),
-    wavelength_low: float = typer.Option(
-        3.3,
-        "--wavelength-low",
-        help="Lower wavelength bound in microns (for averaging computing).",
-    ),
-    wavelength_high: float = typer.Option(
-        3.8,
-        "--wavelength-high",
-        help="Upper wavelength bound in microns (for averaging computing).",
+    wavelength_range: list[float] = typer.Option(
+        [3.3, 3.8],
+        "--wavelength-range",
+        help="Wavelength range in microns (for averaging computing).",
     ),
     poly_order: int = typer.Option(
         1,
@@ -105,6 +100,11 @@ def compute_magic_numbers(
         "--correlated-flux/--no-correlated-flux",
         help="Filter for correlated flux.",
     ),
+    results_dir: Path | None = typer.Option(
+        None,
+        "--results-dir",
+        help="Existing results directory (with CSV files) to plot magic numbers without recomputing.",
+    ),
     plot: bool = typer.Option(
         True,
         "--plot/--no-plot",
@@ -115,16 +115,6 @@ def compute_magic_numbers(
         "--verbose",
         "-v",
         help="Enable verbose logging.",
-    ),
-    results_dir: Path | None = typer.Option(
-        None,
-        "--results-dir",
-        help="Existing results directory (CSV files) to plot without recomputing. Defaults to output-dir if not set.",
-        exists=True,
-        file_okay=False,
-        dir_okay=True,
-        resolve_path=True,
-        readable=True,
     ),
 ) -> None:
     """
@@ -202,8 +192,8 @@ def compute_magic_numbers(
                 resolution=resolution.value,
                 extension=extension.upper(),
                 output_dir=output_dir,
-                wavelength_low=wavelength_low * 1e-6,  # Convert to meters
-                wavelength_high=wavelength_high * 1e-6,
+                wavelength_low=wavelength_range[0] * 1e-6,  # Convert to meters
+                wavelength_high=wavelength_range[1] * 1e-6,
                 correlated_flux=correlated_flux,
                 poly_order=poly_order,
                 tau0_min=tau0_min,
