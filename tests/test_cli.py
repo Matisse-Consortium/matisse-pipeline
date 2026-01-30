@@ -30,7 +30,7 @@ def test_reduce_empty_directory(tmp_path, caplog):
     empty_dir.mkdir()
 
     result = runner.invoke(
-        app, ["reduce", "--datadir", str(empty_dir)], catch_exceptions=False
+        app, ["reduce", "--data-dir", str(empty_dir)], catch_exceptions=False
     )
 
     caplog.set_level("ERROR", logger="matisse")
@@ -61,7 +61,7 @@ def test_reduce_with_one_file(tmp_path, caplog):
 
     with caplog.at_level("INFO"):
         result = runner.invoke(
-            app, ["reduce", "--datadir", str(datadir)], catch_exceptions=False
+            app, ["reduce", "--data-dir", str(datadir)], catch_exceptions=False
         )
 
     # --- Assertions ---
@@ -90,7 +90,7 @@ def test_reduce_no_good_res(tmp_path):
 
     result = runner.invoke(
         app,
-        ["reduce", "--datadir", str(datadir), "--resol", "bad_res"],
+        ["reduce", "--data-dir", str(datadir), "--resol", "bad_res"],
         catch_exceptions=False,
         color=False,
     )

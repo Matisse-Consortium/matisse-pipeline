@@ -624,7 +624,8 @@ def plot_poly_corrections_results(
 
     # Check polynomial order from CSV columns
     has_coef_x3 = "coef_x3" in poly_df.columns
-    poly_order = 3 if has_coef_x3 else 2
+    has_coef_x2 = "coef_x2" in poly_df.columns
+    poly_order = 3 if has_coef_x3 else 2 if has_coef_x2 else 1
 
     # Plot corrections for each baseline
     fig, axes = plt.subplots(2, 3, figsize=(12, 7))
@@ -654,12 +655,14 @@ def plot_poly_corrections_results(
                         + row["coef_x1"] * x_fit
                         + row["coef_x0"]
                     )
-                else:  # poly_order == 2
+                elif poly_order == 2:
                     y_fit = (
                         row["coef_x2"] * x_fit**2
                         + row["coef_x1"] * x_fit
                         + row["coef_x0"]
                     )
+                else:  # poly_order == 1
+                    y_fit = row["coef_x1"] * x_fit + row["coef_x0"]
                 if row["window"] == poly_df["window"].min():
                     label = "Polynomial fit"
                 else:
@@ -685,12 +688,14 @@ def plot_poly_corrections_results(
                         + row["coef_x1"] * x_fit
                         + row["coef_x0"]
                     )
-                else:  # poly_order == 2
+                elif poly_order == 2:
                     y_fit = (
                         row["coef_x2"] * x_fit**2
                         + row["coef_x1"] * x_fit
                         + row["coef_x0"]
                     )
+                else:  # poly_order == 1
+                    y_fit = row["coef_x1"] * x_fit + row["coef_x0"]
                 y_fit = np.where(np.abs(y_fit) > 1e-12, 1.0 / y_fit, np.nan)
                 if row["window"] == 1:
                     label = "Polynomial fit (inv)"
