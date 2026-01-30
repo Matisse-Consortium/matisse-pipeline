@@ -1,5 +1,3 @@
-import textwrap
-
 import typer
 
 from matisse_pipeline.cli import (
@@ -18,14 +16,7 @@ app.command(name="calibrate")(calibrate.calibrate)
 app.command(name="magic")(magic_numbers.compute_magic_numbers)
 app.command(name="show")(show.show)
 app.command(name="doctor")(doctor.doctor)
-
-doc = textwrap.dedent(format_results.format_results.__doc__ or "").strip()
-doc_wrapped = textwrap.fill(doc, width=88)
-app.command(
-    name="format",
-    help="Format reduced data into OIFITS files using FITS metadata.",
-    epilog=doc_wrapped,
-)(format_results.format_results)
+app.command(name="format")(format_results.format_results)
 
 
 # -------------------------

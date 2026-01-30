@@ -15,6 +15,8 @@ def format_results(
     ),
 ):
     """
+    Format reduced data into OIFITS files using FITS metadata.
+
     This command recursively scans the Iter*/ directories for science products (SCI, CAL)
     and moves them into corresponding Iter*_OIFITS/ folders.
     Each file is then renamed based on its observation start time, spectral resolution,
