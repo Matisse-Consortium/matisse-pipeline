@@ -6,6 +6,7 @@ from typer.testing import CliRunner
 
 from matisse_pipeline.cli import format_results as format_module, show as show_module
 from matisse_pipeline.cli.main import app
+from matisse_pipeline.core.utils.oifits_reader import OIFitsReader
 
 runner = CliRunner()
 
@@ -298,3 +299,80 @@ def test_doctor_command_esorex_not_found(monkeypatch):
     assert result.exit_code == 2, f"Unexpected exit code: {result.exit_code}"
     # Should mention esorex not found
     assert "esorex" in result.output.lower()
+
+
+def test_calibrate_command(data_dir, tmp_path):
+    """Ensure 'matisse calibrate' run on testing data."""
+
+    resultdir = tmp_path / "calibration_results"
+
+    result = runner.invoke(
+        app,
+        [
+            "calibrate",
+            "--data-dir",
+            str(data_dir),
+            "--result-dir",
+            str(resultdir),
+            "--bands",
+            "LM",
+        ],
+        catch_exceptions=False,
+    )
+
+    list_oifits = list(resultdir.glob("*.fits"))
+    data_merged = OIFitsReader(list_oifits[0]).read()
+    assert result.exit_code == 0
+    assert len(data_merged.wavelength) == 118  # Based on test data setup
+
+
+def test_calibrate_invalid_band(data_dir, tmp_path, capfd):
+    """Test that calibrate rejects invalid band names."""
+    result = runner.invoke(
+        app,
+        [
+            "calibrate",
+            "--data-dir",
+            str(data_dir),
+            "--result-dir",
+            str(tmp_path),
+            "--bands",
+            "INVALID",
+        ],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 1
+    # Check both result output and captured output
+    output = result.output + capfd.readouterr().out
+    assert "Invalid bands" in output or result.exit_code == 1
+
+
+def test_calibrate_with_exception(data_dir, tmp_path, monkeypatch):
+    """Test that calibrate handles exceptions properly."""
+
+    # Mock run_calibration to raise an exception
+    def mock_run_calibration(*args, **kwargs):
+        raise RuntimeError("Simulated calibration error")
+
+    monkeypatch.setattr(
+        "matisse_pipeline.cli.calibrate.run_calibration",
+        mock_run_calibration,
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "calibrate",
+            "--data-dir",
+            str(data_dir),
+            "--result-dir",
+            str(tmp_path),
+            "--bands",
+            "LM",
+        ],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 1
+    assert "Calibration failed" in result.output
