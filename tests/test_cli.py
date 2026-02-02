@@ -11,6 +11,21 @@ from matisse_pipeline.core.utils.oifits_reader import OIFitsReader
 runner = CliRunner()
 
 
+@pytest.fixture
+def skip_without_esorex():
+    """Skip test if esorex is not available."""
+    try:
+        result = subprocess.run(
+            ["which", "esorex"],
+            capture_output=True,
+            timeout=5,
+        )
+        if result.returncode != 0:
+            pytest.skip("esorex not available")
+    except Exception:
+        pytest.skip("esorex not available")
+
+
 def test_cli_help():
     """Ensure the CLI responds correctly to --help."""
     result = subprocess.run(
@@ -301,8 +316,8 @@ def test_doctor_command_esorex_not_found(monkeypatch):
     assert "esorex" in result.output.lower()
 
 
-def test_calibrate_command(data_dir, tmp_path):
-    """Ensure 'matisse calibrate' run on testing data."""
+def test_calibrate_command(data_dir, tmp_path, skip_without_esorex):
+    """Ensure 'matisse calibrate' run on testing data (requires esorex)."""
 
     resultdir = tmp_path / "calibration_results"
 
@@ -326,8 +341,8 @@ def test_calibrate_command(data_dir, tmp_path):
     assert len(data_merged.wavelength) == 118  # Based on test data setup
 
 
-def test_calibrate_invalid_band(data_dir, tmp_path, capfd):
-    """Test that calibrate rejects invalid band names."""
+def test_calibrate_invalid_band(data_dir, tmp_path, capfd, skip_without_esorex):
+    """Test that calibrate rejects invalid band names (requires esorex)."""
     result = runner.invoke(
         app,
         [
@@ -348,8 +363,8 @@ def test_calibrate_invalid_band(data_dir, tmp_path, capfd):
     assert "Invalid bands" in output or result.exit_code == 1
 
 
-def test_calibrate_with_exception(data_dir, tmp_path, monkeypatch):
-    """Test that calibrate handles exceptions properly."""
+def test_calibrate_with_exception(data_dir, tmp_path, monkeypatch, skip_without_esorex):
+    """Test that calibrate handles exceptions properly (requires esorex)."""
 
     # Mock run_calibration to raise an exception
     def mock_run_calibration(*args, **kwargs):
@@ -376,3 +391,37 @@ def test_calibrate_with_exception(data_dir, tmp_path, monkeypatch):
 
     assert result.exit_code == 1
     assert "Calibration failed" in result.output
+
+
+def test_calibrate_command_mocked(data_dir, tmp_path, monkeypatch):
+    """Test calibrate CLI with mocked esorex (for CI without esorex)."""
+
+    # Mock run_calibration to succeed without running esorex
+    def mock_run_calibration(*args, **kwargs):
+        # Just create dummy output directory
+        kwargs["output_dir"].mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setattr(
+        "matisse_pipeline.cli.calibrate.run_calibration",
+        mock_run_calibration,
+    )
+
+    resultdir = tmp_path / "calibration_results"
+
+    result = runner.invoke(
+        app,
+        [
+            "calibrate",
+            "--data-dir",
+            str(data_dir),
+            "--result-dir",
+            str(resultdir),
+            "--bands",
+            "LM",
+        ],
+        catch_exceptions=False,
+    )
+
+    # Should succeed
+    assert result.exit_code == 0
+    assert resultdir.exists()

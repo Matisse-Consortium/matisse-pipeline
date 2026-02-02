@@ -1,8 +1,41 @@
 from unittest import mock
 
+import pytest
+
 from matisse_pipeline.core import lib_auto_calib as lac
 from matisse_pipeline.core.auto_calib import run_calibration
 from matisse_pipeline.core.utils.oifits_reader import OIFitsReader
+
+
+@pytest.fixture
+def mock_esorex(monkeypatch):
+    """Mock esorex os.system calls for CI environments without esorex."""
+
+    def mock_system(cmd):
+        # Return 0 for success on any esorex command
+        if "esorex" in cmd:
+            return 0
+        return 1
+
+    monkeypatch.setattr("os.system", mock_system)
+    return mock_system
+
+
+@pytest.fixture
+def skip_without_esorex():
+    """Skip test if esorex is not available."""
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            ["which", "esorex"],
+            capture_output=True,
+            timeout=5,
+        )
+        if result.returncode != 0:
+            pytest.skip("esorex not available")
+    except Exception:
+        pytest.skip("esorex not available")
 
 
 def test_generate_calibration_sof_files(data_dir, tmp_path):
@@ -25,7 +58,8 @@ def test_generate_calibration_sof_files(data_dir, tmp_path):
         assert "TARGET_RAW_INT" in content
 
 
-def test_run_calibration_pipeline(data_dir, tmp_path):
+def test_run_calibration_pipeline(data_dir, tmp_path, skip_without_esorex):
+    """Test complete calibration pipeline (requires esorex)."""
     # Run the complete calibration pipeline
     resultdir = tmp_path / "calibration_results"
     run_calibration(
@@ -51,7 +85,8 @@ def test_run_calibration_pipeline(data_dir, tmp_path):
     assert len(data_to_be_check.wavelength) == expected_spectral_channel
 
 
-def test_run_calibration_pipeline_cumul(data_dir, tmp_path):
+def test_run_calibration_pipeline_cumul(data_dir, tmp_path, skip_without_esorex):
+    """Test calibration pipeline with cumul_block (requires esorex)."""
     # Run the complete calibration pipeline
     resultdir = tmp_path / "calibration_results"
     run_calibration(
@@ -210,3 +245,28 @@ def test_run_calibration_esorex_failure(data_dir, tmp_path, monkeypatch):
     )
 
     assert resultdir.exists()
+
+
+def test_run_calibration_pipeline_mocked(data_dir, tmp_path):
+    """Test calibration pipeline with mocked esorex (for CI without esorex)."""
+    # Mock run_esorex_calibration to return success without actually running esorex
+    with mock.patch(
+        "matisse_pipeline.core.auto_calib.run_esorex_calibration"
+    ) as mock_esorex:
+        mock_esorex.return_value = True
+
+        resultdir = tmp_path / "calibration_results"
+
+        # Should complete successfully even without esorex
+        run_calibration(
+            input_dir=data_dir,
+            output_dir=resultdir,
+            bands=["LM"],
+            timespan=0.02,
+            cumul_block=False,
+        )
+
+        # Verify run_esorex_calibration was called
+        assert mock_esorex.called
+        # Verify output directory was created
+        assert resultdir.exists()
