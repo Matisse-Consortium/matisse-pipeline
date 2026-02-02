@@ -116,7 +116,7 @@ def test_run_calibration_pipeline_cumul(data_dir, tmp_path, skip_without_esorex)
     assert len(data_merged.wavelength) == expected_spectral_channel
 
 
-def test_run_esorex_calibration_error(tmp_path):
+def test_run_esorex_calibration_error(tmp_path, skip_without_esorex):
     """Test that run_esorex_calibration handles esorex errors correctly.
 
     This test creates a SOF file with missing input files, causing esorex to fail.
@@ -151,7 +151,7 @@ def test_run_esorex_calibration_error(tmp_path):
     assert "ERROR" in log_content or "Could not open" in log_content
 
 
-def test_run_esorex_calibration_error_with_mock(tmp_path):
+def test_run_esorex_calibration_error_with_mock(tmp_path, skip_without_esorex):
     """Test that run_esorex_calibration handles esorex errors with mocking.
 
     This is a faster unit test that mocks os.system to simulate an error.
