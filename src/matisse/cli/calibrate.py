@@ -6,8 +6,8 @@ from pathlib import Path
 
 import typer
 
-from matisse_pipeline.core.auto_calib import run_calibration
-from matisse_pipeline.core.utils.log_utils import (
+from matisse.core.auto_calib import run_calibration
+from matisse.core.utils.log_utils import (
     console,
     log,
     section,

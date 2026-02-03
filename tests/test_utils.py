@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 from astropy.io import fits
 
-from matisse_pipeline.core.utils import common, io_utils, log_utils, oifits_reader
+from matisse.core.utils import common, io_utils, log_utils, oifits_reader
 
 
 def _reset_console() -> io.StringIO:

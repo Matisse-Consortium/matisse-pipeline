@@ -2,8 +2,8 @@ from pathlib import Path
 
 import typer
 
-from matisse_pipeline.core.tidyup import tidyup_path
-from matisse_pipeline.core.utils.log_utils import log, set_verbosity
+from matisse.core.tidyup import tidyup_path
+from matisse.core.utils.log_utils import log, set_verbosity
 
 
 def format_results(

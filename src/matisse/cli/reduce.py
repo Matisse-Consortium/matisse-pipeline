@@ -8,14 +8,14 @@ from pathlib import Path
 
 import typer
 
-from matisse_pipeline.cli.doctor import (
+from matisse.cli.doctor import (
     _get_env_recipe_dirs,
     find_matisse_recipe_dir,
 )
-from matisse_pipeline.core.auto_pipeline import (
+from matisse.core.auto_pipeline import (
     run_pipeline,
 )
-from matisse_pipeline.core.utils.log_utils import (
+from matisse.core.utils.log_utils import (
     console,
     log,
     section,

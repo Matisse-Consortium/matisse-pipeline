@@ -12,8 +12,8 @@ import pandas as pd
 from astropy.io import fits
 from numpy.typing import NDArray
 
-from matisse_pipeline.core.utils.log_utils import log
-from matisse_pipeline.core.utils.oifits_reader import OIFitsReader
+from matisse.core.utils.log_utils import log
+from matisse.core.utils.oifits_reader import OIFitsReader
 
 from .config import BASELINE_PAIRS, BCD_BASELINE_MAP, BCDConfig
 from .outlier_filter import filter_outliers_custom

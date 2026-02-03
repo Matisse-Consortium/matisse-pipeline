@@ -979,7 +979,7 @@ wheels = [
 ]
 
 [[package]]
-name = "matisse-pipeline"
+name = "matisse"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

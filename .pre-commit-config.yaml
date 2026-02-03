@@ -2,7 +2,7 @@
 # https://pre-commit.com/hooks.html
 minimum_pre_commit_version: '3.2'
 
-exclude: (\.fits|\.fits\.gz|\.oifits)$|^src/matisse_pipeline/legacy/
+exclude: (\.fits|\.fits\.gz|\.oifits)$|^src/matisse/legacy/
 
 ci:
   autofix_prs: true
@@ -39,9 +39,9 @@ repos:
   rev: v0.14.3
   hooks:
   - id: ruff-format
-    exclude: ^src/matisse_pipeline/legacy/
+    exclude: ^src/matisse/legacy/
   - id: ruff-check
-    exclude: ^src/matisse_pipeline/legacy/
+    exclude: ^src/matisse/legacy/
     args: [--fix, --show-fixes]
 
 - repo: https://github.com/macisamuele/language-formatters-pre-commit-hooks

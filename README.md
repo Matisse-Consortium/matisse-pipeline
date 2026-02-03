@@ -1,6 +1,8 @@
 <!-- markdownlint-disable MD033 MD041 -->
 <p align="center">
-  <img src="docs/logo_pipeline_v6.png" alt="MATISSE-pipeline logo" width="300"/>
+  <a href="https://github.com/Matisse-Consortium/matisse-pipeline">
+    <img src="https://raw.githubusercontent.com/Matisse-Consortium/matisse-pipeline/docs/logo/logo_pipeline.png" alt="MATISSE pipeline logo" width="300"/>
+  </a>
 </p>
 <!-- markdownlint-enable MD033 MD041 -->
 
@@ -88,7 +90,7 @@ The original MATISSE reduction tools (`mat_autoPipeline.py`, etc.) are preserved
 They can be accessed by adding the legacy path to your environment:
 
 ```bash
-export PATH="$PATH:$(python -c 'import matisse_pipeline, pathlib; print(pathlib.Path(matisse_pipeline.__file__).parent / "legacy")')"
+export PATH="$PATH:$(python -c 'import matisse, pathlib; print(pathlib.Path(matisse.__file__).parent / "legacy")')"
 ```
 
 You can add this line to your `~/.zshrc` or `~/.bashrc` to make it persistent.
@@ -105,13 +107,14 @@ mat_autoPipeline.py --dirCalib=.
 
 ```bash
 matisse-pipeline/
-├── src/matisse_pipeline/
-│   ├── cli.py                # Main CLI entry point (`mat`)
+├── src/matisse/
+│   ├── cli/                  # Main CLI entry point (`matisse`)
 │   ├── legacy/               # Legacy MATISSE reduction scripts
 │   ├── core/                 # Core pipeline modules
 │   └── viewer/               # Viewer interface
 ├── tests/                    # Unit tests
-├── pyproject.toml            # Project configuration (dependencies, groups, etc.)
+├── pyproject.toml            # Project configuration
+├── CHANGELOG.md              # Project follow-up and versioning
 └── README.md
 ```
 

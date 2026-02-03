@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from matisse_pipeline.types import FloatArray
+from matisse.types import FloatArray
 
 
 def filter_outliers_custom(

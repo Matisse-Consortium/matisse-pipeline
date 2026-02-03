@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from matisse_pipeline.types import FloatArray
+from matisse.types import FloatArray
 
 from .config import BCDConfig
 

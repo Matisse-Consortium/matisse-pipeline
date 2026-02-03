@@ -15,13 +15,13 @@ from pathlib import Path
 
 from tqdm import tqdm
 
-from matisse_pipeline.core.lib_auto_calib import (
+from matisse.core.lib_auto_calib import (
     cleanup_intermediate_files,
     generate_sof_files,
     rename_calibrated_outputs,
     run_esorex_calibration,
 )
-from matisse_pipeline.core.utils.log_utils import log
+from matisse.core.utils.log_utils import log
 
 
 def run_calibration(

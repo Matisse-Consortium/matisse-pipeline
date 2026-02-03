@@ -15,4 +15,4 @@ comment:
   require_head: yes
 
 ignore:
-- src/matisse_pipeline/legacy/**/*
+- src/matisse/legacy/**/*

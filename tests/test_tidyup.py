@@ -2,7 +2,7 @@ from pathlib import Path
 
 from astropy.io import fits
 
-from matisse_pipeline.core.tidyup import change_oifits_filename, tidyup_path
+from matisse.core.tidyup import change_oifits_filename, tidyup_path
 
 
 def _write_oifits(path: Path, rm_list: list = None, **overrides) -> None:

@@ -18,7 +18,7 @@ from pathlib import Path
 import numpy as np
 from astropy.io import fits
 
-from matisse_pipeline.core.utils.log_utils import log
+from matisse.core.utils.log_utils import log
 
 
 def generate_sof_files(

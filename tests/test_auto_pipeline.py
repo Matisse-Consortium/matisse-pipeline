@@ -10,8 +10,8 @@ import pytest
 from astropy.io import fits
 from rich.console import Console
 
-from matisse_pipeline.core import auto_pipeline
-from matisse_pipeline.core.utils import log_utils
+from matisse.core import auto_pipeline
+from matisse.core.utils import log_utils
 
 
 class _DummyProgress:
