@@ -2,6 +2,8 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.1.1 (2026-02-03)
+
 ## v0.1.0 (2026-02-03)
 
 - Initial release of MATISSE pipeline for pypi
