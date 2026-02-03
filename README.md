@@ -1,7 +1,7 @@
 <!-- markdownlint-disable MD033 MD041 -->
 <p align="center">
   <a href="https://github.com/Matisse-Consortium/matisse-pipeline">
-    <img src="https://raw.githubusercontent.com/Matisse-Consortium/matisse-pipeline/docs/logo/logo_pipeline.png" alt="MATISSE pipeline logo" width="300"/>
+    <img src="https://raw.githubusercontent.com/Matisse-Consortium/matisse-pipeline/main/docs/logo/logo_pipeline.png" alt="MATISSE pipeline logo" width="300"/>
   </a>
 </p>
 <!-- markdownlint-enable MD033 MD041 -->
@@ -42,7 +42,7 @@ source .venv/bin/activate
 ### 3️⃣ Install the package
 
 ```bash
-uv pip install git+https://github.com/Matisse-Consortium/matisse-pipeline.git
+uv pip matisse
 ```
 
 ---
