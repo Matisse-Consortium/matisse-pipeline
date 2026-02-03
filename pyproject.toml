@@ -4,7 +4,7 @@ build-backend = "flit_core.buildapi"
 
 [project]
 name = "matisse"
-version = "0.1.0"
+version = "0.1.1"
 description = "Modern and modular MATISSE interferometric data-reduction pipeline interface"
 authors = [
     { name = "Anthony Soulain - MATISSE consortium", email = "anthony.soulain@oca.eu" },
@@ -91,3 +91,8 @@ omit = ["src/matisse/legacy/*"]
 [tool.commitizen]
 name = "cz_conventional_commits"
 version_files = ["pyproject.toml:^version ="]
+version_provider = "uv"
+update_map = { "pyproject.toml" = "version" }
+tag_format = "v$version"
+update_changelog_on_bump = true
+changelog_file = "CHANGELOG.md"
