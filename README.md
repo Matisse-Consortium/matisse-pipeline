@@ -1,7 +1,6 @@
 <!-- markdownlint-disable MD033 MD041 -->
-<p align="center">
-  <img src="docs/logo_pipeline_v6.png" alt="MATISSE-pipeline logo" width="300"/>
-</p>
+<a href="https://github.com/Matisse-Consortium/matisse-pipeline">
+<img src="https://raw.githubusercontent.com/Matisse-Consortium/matisse-pipeline/main/docs/logo/logo_pipeline.png" width="300"></a>
 <!-- markdownlint-enable MD033 MD041 -->
 
 [![Status](https://img.shields.io/badge/status-Beta-orange.svg)](https://github.com/Matisse-Consortium/matisse-pipeline) [![Python versions](https://img.shields.io/badge/python-3.10–3.14-blue)](<https://www.python.org/>) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -106,12 +105,13 @@ mat_autoPipeline.py --dirCalib=.
 ```bash
 matisse-pipeline/
 ├── src/matisse/
-│   ├── cli.py                # Main CLI entry point (`mat`)
+│   ├── cli/                  # Main CLI entry point (`matisse`)
 │   ├── legacy/               # Legacy MATISSE reduction scripts
 │   ├── core/                 # Core pipeline modules
 │   └── viewer/               # Viewer interface
 ├── tests/                    # Unit tests
-├── pyproject.toml            # Project configuration (dependencies, groups, etc.)
+├── pyproject.toml            # Project configuration
+├── CHANGELOG.md              # Project follow-up and versioning
 └── README.md
 ```
 
