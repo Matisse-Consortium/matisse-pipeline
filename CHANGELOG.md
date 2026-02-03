@@ -4,7 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## v0.1.1 (2026-02-03)
 
-## v0.1.0 (2026-02-03)
+- Use of commitizen to test the automatized version updating
+
+## v0.1.0 (2026-01-01)
 
 - Initial release of MATISSE pipeline for pypi
 - Core calibration pipeline interface
