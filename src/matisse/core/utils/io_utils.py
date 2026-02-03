@@ -3,8 +3,8 @@ import json
 from collections.abc import Sequence
 from pathlib import Path
 
-from matisse_pipeline.core.lib_auto_pipeline import matisse_type
-from matisse_pipeline.core.utils.log_utils import log
+from matisse.core.lib_auto_pipeline import matisse_type
+from matisse.core.utils.log_utils import log
 
 
 # --- Input resolution helpers ---

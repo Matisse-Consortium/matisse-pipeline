@@ -17,10 +17,10 @@ from rich.progress import (
 )
 from rich.table import Table
 
-from matisse_pipeline.cli.reduce import Resolution
-from matisse_pipeline.core.bcd import BCDConfig, compute_bcd_corrections
-from matisse_pipeline.core.bcd.visualization import plot_poly_corrections_results
-from matisse_pipeline.core.utils.log_utils import console, log
+from matisse.cli.reduce import Resolution
+from matisse.core.bcd import BCDConfig, compute_bcd_corrections
+from matisse.core.bcd.visualization import plot_poly_corrections_results
+from matisse.core.utils.log_utils import console, log
 
 
 class BCDMode(str, Enum):

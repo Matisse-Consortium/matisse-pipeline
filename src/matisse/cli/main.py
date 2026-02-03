@@ -1,6 +1,6 @@
 import typer
 
-from matisse_pipeline.cli import (
+from matisse.cli import (
     calibrate,
     doctor,
     format_results,

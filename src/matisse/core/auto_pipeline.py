@@ -31,15 +31,15 @@ from astroquery.vizier import Vizier
 # --- MATISSE logging and console (imported from core) ---
 from rich.progress import Progress
 
-from matisse_pipeline.core.lib_auto_pipeline import (
+from matisse.core.lib_auto_pipeline import (
     matisse_action,
     matisse_calib,
     matisse_recipes,
     matisse_type,
 )
-from matisse_pipeline.core.utils.common import remove_double_parameter
-from matisse_pipeline.core.utils.io_utils import resolve_raw_input
-from matisse_pipeline.core.utils.log_utils import (
+from matisse.core.utils.common import remove_double_parameter
+from matisse.core.utils.io_utils import resolve_raw_input
+from matisse.core.utils.log_utils import (
     console,
     iteration_banner,
     log,

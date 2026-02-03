@@ -3,7 +3,7 @@ requires = ["flit_core >=3.11,<4"]
 build-backend = "flit_core.buildapi"
 
 [project]
-name = "matisse-pipeline"
+name = "matisse"
 version = "0.1.0"
 description = "Modern and modular MATISSE interferometric data-reduction pipeline interface"
 authors = [
@@ -42,7 +42,11 @@ file = "README.md"
 content-type = "text/markdown"
 
 [project.scripts]
-matisse = "matisse_pipeline.cli.main:main"
+matisse = "matisse.cli.main:main"
+
+[project.urls]
+homepage = "https://github.com/Matisse-Consortium/matisse-pipeline"
+Issues = "https://github.com/Matisse-Consortium/matisse-pipeline/issues"
 
 [dependency-groups]
 typecheck = ["mypy>=1.14.1", "types-termcolor>=1.1.6.2"]
@@ -50,10 +54,10 @@ test = ["pytest>=7.2.1", "pytest-cov>=4.1.0", "ruff", "pre-commit"]
 
 [tool.ruff]
 # Exclude all Python files in the legacy folder
-exclude = ["src/matisse_pipeline/legacy/"]
+exclude = ["src/matisse/legacy/"]
 
 [tool.ruff.lint]
-exclude = ["*__init__.py", "src/matisse_pipeline/legacy/"]
+exclude = ["*__init__.py", "src/matisse/legacy/"]
 ignore = ["E501"]
 select = ["E", "F", "W", "I", "B"]
 
@@ -61,7 +65,7 @@ select = ["E", "F", "W", "I", "B"]
 combine-as-imports = true
 
 [tool.ruff.lint.per-file-ignores]
-"src/matisse_pipeline/cli/*.py" = ["B008"]
+"src/matisse/cli/*.py" = ["B008"]
 
 [tool.mypy]
 python_version = "3.10"
@@ -71,10 +75,10 @@ warn_unused_ignores = true
 warn_unreachable = true
 show_error_context = true
 show_error_codes = true
-exclude = ["src/matisse_pipeline/legacy"]
+exclude = ["src/matisse/legacy"]
 
 [tool.pytest.ini_options]
-addopts = "--cov=src/matisse_pipeline --cov-report=xml --cov-report=term --cov-fail-under=0"
+addopts = "--cov=src/matisse --cov-report=xml --cov-report=term --cov-fail-under=0"
 testpaths = ["tests"]
 filterwarnings = [
     "ignore:Keyword name 'ESO.*':astropy.io.fits.card.VerifyWarning",
@@ -82,4 +86,4 @@ filterwarnings = [
 ]
 
 [tool.coverage.run]
-omit = ["src/matisse_pipeline/legacy/*"]
+omit = ["src/matisse/legacy/*"]

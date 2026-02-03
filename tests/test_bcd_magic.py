@@ -7,10 +7,10 @@ import pandas as pd
 import pytest
 from typer.testing import CliRunner
 
-from matisse_pipeline.cli.main import app
-from matisse_pipeline.core.bcd import correction as correction_module
-from matisse_pipeline.core.bcd.config import BCDConfig
-from matisse_pipeline.core.bcd.visualization import (
+from matisse.cli.main import app
+from matisse.core.bcd import correction as correction_module
+from matisse.core.bcd.config import BCDConfig
+from matisse.core.bcd.visualization import (
     plot_corrections,
     plot_poly_corrections_results,
 )
@@ -334,7 +334,7 @@ def test_plot_mean_corrections_with_mplcursors(tmp_path, monkeypatch):
     target_names = ["HD123456", "HD789012"]
     tau0_values = [4.5, 2.0]  # Good and medium quality
 
-    from matisse_pipeline.core.bcd.visualization import _plot_mean_corrections
+    from matisse.core.bcd.visualization import _plot_mean_corrections
 
     fig = _plot_mean_corrections(
         corrections_mean,
@@ -379,7 +379,7 @@ def test_plot_mean_corrections_without_mplcursors(tmp_path, monkeypatch):
         ]
     )
 
-    from matisse_pipeline.core.bcd.visualization import _plot_mean_corrections
+    from matisse.core.bcd.visualization import _plot_mean_corrections
 
     # Test without optional parameters
     fig = _plot_mean_corrections(corrections_mean, config)

@@ -14,7 +14,7 @@ CODESTYLE_MATISSE.md
 Iter*/
 
 # Ignore legacy from previous scripts structure
-src/matisse_pipeline/core/legacy/
+src/matisse/core/legacy/
 
 # Ignore all VS Code config except shared settings.json
 .vscode/*

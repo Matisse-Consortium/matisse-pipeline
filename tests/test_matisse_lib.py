@@ -3,8 +3,8 @@ from __future__ import annotations
 import pytest
 from astropy.io import fits
 
-import matisse_pipeline.core.lib_auto_pipeline as lib_auto_pipeline
-from matisse_pipeline.core.lib_auto_pipeline import (
+import matisse.core.lib_auto_pipeline as lib_auto_pipeline
+from matisse.core.lib_auto_pipeline import (
     CalibEntry,
     matisse_action,
     matisse_calib,

@@ -2,9 +2,9 @@ from unittest import mock
 
 import pytest
 
-from matisse_pipeline.core import lib_auto_calib as lac
-from matisse_pipeline.core.auto_calib import run_calibration
-from matisse_pipeline.core.utils.oifits_reader import OIFitsReader
+from matisse.core import lib_auto_calib as lac
+from matisse.core.auto_calib import run_calibration
+from matisse.core.utils.oifits_reader import OIFitsReader
 
 
 @pytest.fixture
@@ -161,7 +161,7 @@ def test_run_esorex_calibration_error_with_mock(tmp_path, skip_without_esorex):
     sof_file.write_text("dummy_target.fits\tTARGET_RAW_INT\n")
 
     # Mock os.system to return a non-zero exit code (error)
-    with mock.patch("matisse_pipeline.core.lib_auto_calib.os.system") as mock_system:
+    with mock.patch("matisse.core.lib_auto_calib.os.system") as mock_system:
         mock_system.return_value = 2304  # Simulated esorex error code
 
         # Call run_esorex_calibration
@@ -185,7 +185,7 @@ def test_run_esorex_calibration_success(tmp_path):
     sof_file.write_text("dummy_target.fits\tTARGET_RAW_INT\n")
 
     # Mock os.system to return 0 (success)
-    with mock.patch("matisse_pipeline.core.lib_auto_calib.os.system") as mock_system:
+    with mock.patch("matisse.core.lib_auto_calib.os.system") as mock_system:
         mock_system.return_value = 0
 
         # Call run_esorex_calibration
@@ -206,7 +206,7 @@ def test_run_calibration_no_sof_generated(data_dir, tmp_path, monkeypatch):
     """Test run_calibration when no SOF files are generated (no matching data)."""
     # Mock generate_sof_files to return empty list
     monkeypatch.setattr(
-        "matisse_pipeline.core.auto_calib.generate_sof_files",
+        "matisse.core.auto_calib.generate_sof_files",
         lambda **kwargs: [],
     )
 
@@ -229,7 +229,7 @@ def test_run_calibration_esorex_failure(data_dir, tmp_path, monkeypatch):
     """Test run_calibration when esorex fails."""
     # Mock run_esorex_calibration to always fail
     monkeypatch.setattr(
-        "matisse_pipeline.core.auto_calib.run_esorex_calibration",
+        "matisse.core.auto_calib.run_esorex_calibration",
         lambda **kwargs: False,
     )
 
@@ -250,9 +250,7 @@ def test_run_calibration_esorex_failure(data_dir, tmp_path, monkeypatch):
 def test_run_calibration_pipeline_mocked(data_dir, tmp_path):
     """Test calibration pipeline with mocked esorex (for CI without esorex)."""
     # Mock run_esorex_calibration to return success without actually running esorex
-    with mock.patch(
-        "matisse_pipeline.core.auto_calib.run_esorex_calibration"
-    ) as mock_esorex:
+    with mock.patch("matisse.core.auto_calib.run_esorex_calibration") as mock_esorex:
         mock_esorex.return_value = True
 
         resultdir = tmp_path / "calibration_results"

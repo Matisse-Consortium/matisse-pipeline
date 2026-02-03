@@ -1,4 +1,4 @@
-# src/matisse_pipeline/types.py
+# src/matisse/types.py
 
 from typing import Any
 

@@ -9,8 +9,8 @@ from pathlib import Path
 import plotly.io as pio
 import typer
 
-from matisse_pipeline.core.utils.oifits_reader import open_oifits
-from matisse_pipeline.viewer import viewer_plotly
+from matisse.core.utils.oifits_reader import open_oifits
+from matisse.viewer import viewer_plotly
 
 
 def show(

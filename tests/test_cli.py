@@ -4,9 +4,9 @@ import subprocess
 import pytest
 from typer.testing import CliRunner
 
-from matisse_pipeline.cli import format_results as format_module, show as show_module
-from matisse_pipeline.cli.main import app
-from matisse_pipeline.core.utils.oifits_reader import OIFitsReader
+from matisse.cli import format_results as format_module, show as show_module
+from matisse.cli.main import app
+from matisse.core.utils.oifits_reader import OIFitsReader
 
 runner = CliRunner()
 
@@ -300,7 +300,7 @@ def test_doctor_command_with_no_require_any():
 
 def test_doctor_command_esorex_not_found(monkeypatch):
     """Ensure 'matisse doctor' handles missing esorex gracefully."""
-    from matisse_pipeline.cli import doctor as doctor_module
+    from matisse.cli import doctor as doctor_module
 
     # Mock shutil.which to return None (esorex not found)
     monkeypatch.setattr(doctor_module.shutil, "which", lambda cmd: None)
@@ -371,7 +371,7 @@ def test_calibrate_with_exception(data_dir, tmp_path, monkeypatch, skip_without_
         raise RuntimeError("Simulated calibration error")
 
     monkeypatch.setattr(
-        "matisse_pipeline.cli.calibrate.run_calibration",
+        "matisse.cli.calibrate.run_calibration",
         mock_run_calibration,
     )
 
@@ -402,7 +402,7 @@ def test_calibrate_command_mocked(data_dir, tmp_path, monkeypatch):
         kwargs["output_dir"].mkdir(parents=True, exist_ok=True)
 
     monkeypatch.setattr(
-        "matisse_pipeline.cli.calibrate.run_calibration",
+        "matisse.cli.calibrate.run_calibration",
         mock_run_calibration,
     )
 

@@ -1,7 +1,7 @@
 import numpy as np
 import plotly.graph_objects as go
 
-from matisse_pipeline.viewer import viewer_plotly as vp
+from matisse.viewer import viewer_plotly as vp
 
 
 def test_build_blname_list_minimal(base_mock_data):

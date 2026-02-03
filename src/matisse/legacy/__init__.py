@@ -13,6 +13,6 @@ updates. The code is kept exactly as-is to ensure reproducibility with
 older data processing configurations.
 
 ⚠️ If you are developing new features or modern data reduction tools,
-use the refactored implementation in `matisse_pipeline.core` or
-`matisse_pipeline.cli` instead.
+use the refactored implementation in `matisse.core` or
+`matisse.cli` instead.
 """

@@ -6,7 +6,7 @@ from shutil import copy2
 from astropy.io import fits
 from rich.progress import Progress
 
-from matisse_pipeline.core.utils.log_utils import log
+from matisse.core.utils.log_utils import log
 
 
 def change_oifits_filename(oifits: Path) -> None:

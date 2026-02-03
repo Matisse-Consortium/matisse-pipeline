@@ -88,7 +88,7 @@ The original MATISSE reduction tools (`mat_autoPipeline.py`, etc.) are preserved
 They can be accessed by adding the legacy path to your environment:
 
 ```bash
-export PATH="$PATH:$(python -c 'import matisse_pipeline, pathlib; print(pathlib.Path(matisse_pipeline.__file__).parent / "legacy")')"
+export PATH="$PATH:$(python -c 'import matisse, pathlib; print(pathlib.Path(matisse.__file__).parent / "legacy")')"
 ```
 
 You can add this line to your `~/.zshrc` or `~/.bashrc` to make it persistent.
@@ -105,7 +105,7 @@ mat_autoPipeline.py --dirCalib=.
 
 ```bash
 matisse-pipeline/
-├── src/matisse_pipeline/
+├── src/matisse/
 │   ├── cli.py                # Main CLI entry point (`mat`)
 │   ├── legacy/               # Legacy MATISSE reduction scripts
 │   ├── core/                 # Core pipeline modules
