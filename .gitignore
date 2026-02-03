@@ -24,3 +24,6 @@ src/matisse/core/legacy/
 .coverage
 coverage.xml
 htmlcov/
+
+# ignore release files
+RELEASING.md

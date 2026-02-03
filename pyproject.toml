@@ -87,3 +87,7 @@ filterwarnings = [
 
 [tool.coverage.run]
 omit = ["src/matisse/legacy/*"]
+
+[tool.commitizen]
+name = "cz_conventional_commits"
+version_files = ["pyproject.toml:^version ="]
