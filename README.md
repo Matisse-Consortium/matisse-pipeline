@@ -1,6 +1,9 @@
 <!-- markdownlint-disable MD033 MD041 -->
-<a href="https://github.com/Matisse-Consortium/matisse-pipeline">
-<img src="https://raw.githubusercontent.com/Matisse-Consortium/matisse-pipeline/main/docs/logo/logo_pipeline.png" width="300"></a>
+<p align="center">
+  <a href="https://github.com/Matisse-Consortium/matisse-pipeline">
+    <img src="https://raw.githubusercontent.com/Matisse-Consortium/matisse-pipeline/docs/logo/logo_pipeline.png" alt="MATISSE pipeline logo" width="300"/>
+  </a>
+</p>
 <!-- markdownlint-enable MD033 MD041 -->
 
 [![Status](https://img.shields.io/badge/status-Beta-orange.svg)](https://github.com/Matisse-Consortium/matisse-pipeline) [![Python versions](https://img.shields.io/badge/python-3.10–3.14-blue)](<https://www.python.org/>) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
