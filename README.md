@@ -42,7 +42,7 @@ source .venv/bin/activate
 ### 3️⃣ Install the package
 
 ```bash
-uv pip matisse
+uv pip install matisse
 ```
 
 ---
