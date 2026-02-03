@@ -123,7 +123,8 @@ def _plot_mean_corrections(
         cursor = mplcursors.cursor(lines, hover=True)
 
         @cursor.connect("add")
-        def on_add(sel):
+        def on_add(sel):  # pragma: no cover
+            # Interactive callback - difficult to test automatically
             line_idx = lines.index(sel.artist)
             label = file_labels[line_idx] if file_labels else f"File {line_idx + 1}"
             baseline_idx = int(sel.target[0])

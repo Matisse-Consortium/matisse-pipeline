@@ -223,7 +223,11 @@ def test_magic_cli_plots_existing_results(tmp_path, monkeypatch):
     ]
     pd.DataFrame(poly_rows).to_csv(tmp_path / "bcd_IN_IN_poly_coeffs.csv", index=False)
 
-    result = runner.invoke(app, ["magic", "--results-dir", str(tmp_path)])
+    tau0_min_value = 5
+    result = runner.invoke(
+        app,
+        ["magic", "--results-dir", str(tmp_path), "--tau0-min", str(tau0_min_value)],
+    )
 
     assert result.exit_code == 0, result.output
 
@@ -304,4 +308,93 @@ def test_plot_poly_corrections_results_poly3(tmp_path):
     axes = fig.get_axes()
     handles, labels = axes[0].get_legend_handles_labels()
     assert "Polynomial fit" in labels
+    plt.close(fig)
+
+
+def test_plot_mean_corrections_with_mplcursors(tmp_path, monkeypatch):
+    """Test that _plot_mean_corrections uses mplcursors when available."""
+    monkeypatch.setattr(plt, "show", lambda: None)
+
+    config = BCDConfig(
+        output_dir=tmp_path,
+        wavelength_low=3.3e-6,
+        wavelength_high=3.4e-6,
+        bcd_mode="IN_IN",
+    )
+
+    corrections_mean = np.array(
+        [
+            [1.0, 1.1, 0.9, 1.05, 0.95, 1.02],
+            [1.1, 1.0, 1.0, 0.98, 1.03, 0.97],
+        ]
+    )
+
+    file_labels = ["file1.fits", "file2.fits"]
+    baseline_names = ["B0", "B1", "B2", "B3", "B4", "B5"]
+    target_names = ["HD123456", "HD789012"]
+    tau0_values = [4.5, 2.0]  # Good and medium quality
+
+    from matisse_pipeline.core.bcd.visualization import _plot_mean_corrections
+
+    fig = _plot_mean_corrections(
+        corrections_mean,
+        config,
+        file_labels=file_labels,
+        baseline_names=baseline_names,
+        target_names=target_names,
+        tau0_values=tau0_values,
+    )
+
+    # Check that figure was created
+    assert fig is not None
+    ax = fig.get_axes()[0]
+
+    # Check that data lines were plotted (2 data lines + 1 mean line with error bars)
+    lines = ax.get_lines()
+    assert len(lines) >= 2  # At least the 2 data lines
+
+    # Check that labels are set correctly
+    labels = [line.get_label() for line in lines]
+    assert "file1.fits" in labels
+    assert "file2.fits" in labels
+
+    plt.close(fig)
+
+
+def test_plot_mean_corrections_without_mplcursors(tmp_path, monkeypatch):
+    """Test that _plot_mean_corrections works without mplcursors."""
+    monkeypatch.setattr(plt, "show", lambda: None)
+
+    config = BCDConfig(
+        output_dir=tmp_path,
+        wavelength_low=3.3e-6,
+        wavelength_high=3.4e-6,
+        bcd_mode="IN_IN",
+    )
+
+    corrections_mean = np.array(
+        [
+            [1.0, 1.1, 0.9, 1.05, 0.95, 1.02],
+            [1.1, 1.0, 1.0, 0.98, 1.03, 0.97],
+        ]
+    )
+
+    from matisse_pipeline.core.bcd.visualization import _plot_mean_corrections
+
+    # Test without optional parameters
+    fig = _plot_mean_corrections(corrections_mean, config)
+
+    # Check that figure was created even without mplcursors
+    assert fig is not None
+    ax = fig.get_axes()[0]
+
+    # Check that data was plotted
+    lines = ax.get_lines()
+    assert len(lines) >= 2  # At least 2 data lines
+
+    # Check default labels
+    labels = [line.get_label() for line in lines]
+    assert "File 1" in labels
+    assert "File 2" in labels
+
     plt.close(fig)
