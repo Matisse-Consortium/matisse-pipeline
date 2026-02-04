@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import os
+import platform
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -163,6 +165,42 @@ def check_matisse_recipes(
     return (CheckResult(name="MATISSE recipes", ok=True, message=msg), matisse)
 
 
+def _clickable_link(label: str, url: str) -> str:
+    return f"\033]8;;{url}\033\\{label}\033]8;;\033\\"
+
+
+def echo_esorex_missing() -> None:
+    link_brew = "https://www.eso.org/sci/software/pipe_aem_brew.html"
+    link_macports = (
+        "https://www.eso.org/sci/software/pipelines/installation/macports.html"
+    )
+
+    typer.secho(
+        f"\nDetected platform: {platform.system()} ({sys.platform})\n",
+        fg=typer.colors.CYAN,
+    )
+
+    typer.echo("This package requires the ESO pipeline environment (esorex).\n")
+
+    typer.secho("Recommended installation methods:\n", bold=True)
+
+    typer.echo("  1) Homebrew (macOS and Linux)")
+    typer.secho(
+        f"     {_clickable_link(link_brew, link_brew)}",
+        fg=typer.colors.BLUE,
+    )
+
+    typer.echo("\n  2) MacPorts (macOS)")
+    typer.secho(
+        f"     {_clickable_link(link_macports, link_macports)}",
+        fg=typer.colors.BLUE,
+    )
+
+    typer.echo(
+        "\nAfter installation, make sure the `esorex` command is available in your PATH."
+    )
+
+
 # ---------- typer command ----------
 
 
@@ -204,6 +242,7 @@ def doctor(
     if not results[-1].ok:
         for r in results:
             _print_result(r)
+        echo_esorex_missing()
         typer.echo("\nEnvironment check failed.")
         raise typer.Exit(code=2)
 
