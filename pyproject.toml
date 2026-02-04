@@ -4,7 +4,7 @@ build-backend = "flit_core.buildapi"
 
 [project]
 name = "matisse"
-version = "0.1.1"
+version = "0.2.0"
 description = "Modern and modular MATISSE interferometric data-reduction pipeline interface"
 authors = [
     { name = "Anthony Soulain - MATISSE consortium", email = "anthony.soulain@oca.eu" },
