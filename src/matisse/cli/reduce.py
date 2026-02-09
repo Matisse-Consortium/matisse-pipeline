@@ -98,7 +98,7 @@ def reduce(
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose mode"),
 ):
     """
-    Run automatic reduction (observable extraction and raw calibration).
+    Run automatic reduction to produce uncalibrated oifits files and processed calibration maps if needed beforehand.
 
     It processes raw MATISSE data files and produces
     uncalibrated results. This pipeline is designed to run over multiple iterations (--max-iter)
