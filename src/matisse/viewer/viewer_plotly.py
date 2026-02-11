@@ -170,14 +170,13 @@ def build_blname_list(data: dict[str, Any]) -> list:
         Dictionary containing interferometric data, including:
         - `STA_INDEX` : list or array of station indices.
         - `STA_NAME`  : list of corresponding station names.
-        - `VIS2["STA_INDEX"]` : 2D array of shape (n_baselines, 2) giving
+        - `VIS2["STA_INDEX"]` or `VIS["STA_INDEX"]` : 2D array of shape (n_baselines, 2) giving
           the station index pairs for each baseline.
 
     Returns
     -------
-    np.ndarray
-        Array of baseline names (dtype='<U8' typically), e.g.:
-        ["A0-G1", "K0-J1", "G1-I1", ...].
+    list
+        List of baseline names (e.g., ["A0-G1", "K0-J1", "G1-I1", ...]).
     """
     sta_index = data["STA_INDEX"]
     n_telescopes = len(sta_index)
@@ -187,7 +186,11 @@ def build_blname_list(data: dict[str, Any]) -> list:
     ref_station = {sta_index[i]: data["STA_NAME"][i] for i in range(n_telescopes)}
 
     # Get all pairs of station indices for each baseline
-    all_sta_index = data["VIS2"]["STA_INDEX"][:n_baseline]
+    # Try VIS2 first, fallback to VIS if unavailable (for correlated flux mode)
+    if data.get("VIS2") is not None:
+        all_sta_index = data["VIS2"]["STA_INDEX"][:n_baseline]
+    else:
+        all_sta_index = data["VIS"]["STA_INDEX"][:n_baseline]
 
     # Initialize a fixed-size array of strings
     baseline_names = np.empty(n_baseline, dtype="U16")
@@ -843,10 +846,11 @@ def plot_obs_groups(
         Names of the 6 baselines.
     baseline_colors : list[str]
         Hex colors for each baseline.
+    obs_name : str
+        Observable type: "V2" (squared visibility), "V" (correlated flux), or "dphi" (diff phase).
+    obs_range : list[float] | None
+        Y-axis range. If None, auto-scales for correlated flux or uses [0, 1.1] for V².
     """
-    if obs_range is None:
-        obs_range = [0, 1.1]
-
     wavelength = np.ascontiguousarray(data["WLEN"], dtype=np.float64) * 1e6
 
     if obs_name == "dphi":
@@ -854,20 +858,37 @@ def plot_obs_groups(
         v2_err = np.ascontiguousarray(data["VIS"]["DPHIERR"], dtype=np.float64)
         v2_flags = data["VIS"]["FLAG"]
         title = "diff. phase [°]"
+        if obs_range is None:
+            obs_range = [-190, 190]
     elif obs_name == "V":
         v2_series = np.ascontiguousarray(data["VIS"]["VISAMP"], dtype=np.float64)
         v2_err = np.ascontiguousarray(data["VIS"]["VISAMPERR"], dtype=np.float64)
         v2_flags = data["VIS"]["FLAG"]
-        title = "V"
+        title = "Correlated flux"
+        # Auto-scale for correlated flux (can be negative, like in legacy)
+        if obs_range is None or obs_range == [0, None]:
+            # Compute min/max allowing negative values
+            min_val = float(np.nanmin(v2_series))
+            max_val = float(np.nanmax(v2_series))
+            # Add 10% margin like matplotlib autoscale
+            margin = (max_val - min_val) * 0.1
+            obs_range = [min_val - margin, max_val + margin]
     else:
         v2_series = np.ascontiguousarray(data["VIS2"]["VIS2"], dtype=np.float64)
         v2_err = np.ascontiguousarray(data["VIS2"]["VIS2ERR"], dtype=np.float64)
         v2_flags = data["VIS2"]["FLAG"]
         title = "V²"
+        if obs_range is None:
+            # V² bounds: clamp to [-0.2, 1.2] like legacy
+            max_v2 = float(np.nanmax(v2_series))
+            max_v2 = max_v2 if max_v2 < 1.2 else 1.2
+            min_v2 = float(np.nanmin(v2_series))
+            min_v2 = min_v2 if min_v2 > -0.2 else -0.2
+            obs_range = [min_v2, max_v2]
 
     # List of arrays containing V² data.
     # - If len(v2_series) == 6  → 1 exposure group
-    #  - If len(v2_series) == 24 → 4 exposure groups
+    # - If len(v2_series) == 24 → 4 exposure groups
 
     n_baselines = len(baseline_names)
     n_series = len(v2_series)
@@ -922,7 +943,8 @@ def plot_obs_groups(
         fig.update_yaxes(
             range=obs_range, title=title if b_idx == 2 else "", row=row, col=col
         )
-        wl_range = [wavelength[-1], wavelength[0]]
+        print(wavelength[valid])
+        wl_range = [wavelength.min(), wavelength.max()]
         fig.update_xaxes(
             title="Wavelength (µm)" if row == 8 else "",
             range=wl_range,
@@ -1057,6 +1079,26 @@ def plot_closure_groups(
 def make_static_matisse_plot(data, mix_color: bool = False):
     meta = create_meta(data)
 
+    # Detect if we should display correlated flux instead of V²
+    # (automatic switch when FLUX photometry is unavailable, typically N-band)
+    has_flux = False
+    try:
+        flux_data = data.get("FLUX")
+        if flux_data is not None and flux_data.get("FLUX") is not None:
+            has_flux = True
+    except (KeyError, TypeError):
+        has_flux = False
+
+    use_corrflux = not has_flux
+
+    # Determine observable type and range
+    if use_corrflux:
+        obs_type = "V"  # VISAMP (correlated flux)
+        vis_range = [0, None]  # Auto-scale for correlated flux
+    else:
+        obs_type = "V2"  # Squared visibility
+        vis_range = [0, 1.1]
+
     rel_scale_vis = 0.08
     # --- Création du canevas 8x3 ---
     fig = make_subplots(
@@ -1150,8 +1192,14 @@ def make_static_matisse_plot(data, mix_color: bool = False):
             sta_index = None
         if sta_index is not None:
             station_flux = [ref_station[sta] for sta in sta_index]
+    # Get UV coordinates (fallback to VIS if VIS2 unavailable)
+    if data.get("VIS2") is not None:
+        ucoord = data["VIS2"]["U"]
+        vcoord = data["VIS2"]["V"]
+    else:
+        ucoord = data["VIS"]["U"]
+        vcoord = data["VIS"]["V"]
 
-    fig.update_yaxes(domain=[0.82, 1.00], row=1, col=1)
     fig.update_yaxes(domain=[0.82, 1.00], row=1, col=3)
 
     # Block 3 - Spectrum
@@ -1189,13 +1237,15 @@ def make_static_matisse_plot(data, mix_color: bool = False):
         bl_lengths=bl_lengths,
     )
 
-    # VISIBILITY PLOT
+    # VISIBILITY PLOT (auto-switch to correlated flux if VIS2 unavailable)
     plot_obs_groups(
         fig,
         data,
         baseline_names=baseline_names,
         baseline_colors=baseline_colors,
         show_errors=False,
+        obs_name=obs_type,
+        obs_range=vis_range,
     )
 
     # DIFF PHASE PLOT
