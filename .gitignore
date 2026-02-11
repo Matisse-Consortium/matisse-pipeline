@@ -27,3 +27,4 @@ htmlcov/
 
 # ignore release files
 RELEASING.md
+.github/copilot-instructions.md
