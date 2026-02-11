@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Sequence
 
 import matplotlib.colors as mcolors
 import numpy as np
@@ -829,7 +829,7 @@ def plot_obs_groups(
     baseline_colors: list[str],
     show_errors: bool = False,
     obs_name: str = "V2",
-    obs_range: list[float] | None = None,
+    obs_range: Sequence[int | float | None] | None = None,
     col: int = 1,
 ):
     """
@@ -1094,10 +1094,10 @@ def make_static_matisse_plot(data, mix_color: bool = False):
     # Determine observable type and range
     if use_corrflux:
         obs_type = "V"  # VISAMP (correlated flux)
-        vis_range = [0, None]  # Auto-scale for correlated flux
+        vis_range = [0.0, None]  # Auto-scale for correlated flux
     else:
         obs_type = "V2"  # Squared visibility
-        vis_range = [0, 1.1]
+        vis_range = [0.0, 1.1]
 
     rel_scale_vis = 0.08
     # --- Création du canevas 8x3 ---
