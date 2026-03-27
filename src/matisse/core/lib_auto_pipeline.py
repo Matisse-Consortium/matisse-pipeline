@@ -1239,7 +1239,7 @@ def matisse_type(header: Mapping[str, Any]) -> str:
 
 def add_mdfc_fluxes(
     oifits_files: Sequence[str | Path],
-    vizier_cat: Vizier,  # type: ignore
+    vizier_cat: Vizier,
 ) -> None:
     """Add MDFC catalog fluxes (L, M, N) to OIFITS file headers.
 

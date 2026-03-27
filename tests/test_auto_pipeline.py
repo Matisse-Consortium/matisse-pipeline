@@ -207,7 +207,7 @@ def test_run_pipeline_existing_output_dir(monkeypatch, tmp_path):
     tplstart = "2025-01-01T00:00:00"
     chip = "HAWAII-2RG"
     rbname_safe = f"recipe.{tplstart}.HAWAII-2RG".replace(":", "_")
-    iter_dir = result_dir / "Reduced"
+    iter_dir = result_dir / "reduced"
     iter_dir.mkdir()
     output_dir = iter_dir / f"{rbname_safe}.rb"
     output_dir.mkdir()
@@ -570,7 +570,7 @@ def test_run_pipeline_writes_sof_and_invokes_esorex(tmp_path, monkeypatch):
         check_calib=False,
     )
 
-    iter_dir = result_dir / "Reduced"
+    iter_dir = result_dir / "reduced"
     sof_path = iter_dir / "mat_im_basic.2025-01-02T00_00_00.HAWAII-2RG.sof"
     output_dir = iter_dir / "mat_im_basic.2025-01-02T00_00_00.HAWAII-2RG.rb"
 
