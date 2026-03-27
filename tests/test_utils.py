@@ -710,7 +710,7 @@ def test_show_blocs_status_breaks_loop():
         },
     ]
 
-    should_break = log_utils.show_blocs_status([], 1, 1, blocks, check_blocks=False)
+    should_break = log_utils.show_blocs_status([], 1, blocks, check_blocks=False)
     assert should_break is True
     output = stream.getvalue()
     assert "Global Pipeline Statistics" in output
@@ -737,5 +737,5 @@ def test_show_blocs_status_continue_branch():
         }
     ]
 
-    should_break = log_utils.show_blocs_status(["cmd"], 1, 2, blocks, check_blocks=True)
+    should_break = log_utils.show_blocs_status(["cmd"], 1, blocks, check_blocks=True)
     assert should_break is False

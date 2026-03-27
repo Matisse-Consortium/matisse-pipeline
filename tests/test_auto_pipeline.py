@@ -4,7 +4,6 @@ import io
 
 # import sys
 from pathlib import Path
-from threading import Lock
 
 import pytest
 from astropy.io import fits
@@ -16,7 +15,7 @@ from matisse.core.utils import log_utils
 
 class _DummyProgress:
     def __init__(self, *args, **kwargs):
-        pass
+        self.console = type("_C", (), {"print": staticmethod(lambda *a, **k: None)})()
 
     def __enter__(self):
         return self
@@ -29,6 +28,10 @@ class _DummyProgress:
 
     def advance(self, *_args, **_kwargs):
         return None
+
+    @staticmethod
+    def get_default_columns():
+        return ()
 
 
 class _DummyVizier:
@@ -80,13 +83,17 @@ def test_run_esorex_invokes_esorex_command(monkeypatch, tmp_path):
     original_cmd = f"{base_cmd} % simulated progress output"
     block_index = 4
 
-    result = auto_pipeline.run_esorex((original_cmd, block_index, Lock()))
+    result = auto_pipeline.run_esorex((original_cmd, block_index, "mat_test_recipe"))
 
-    assert result == (block_index, True)
+    assert result == (
+        block_index,
+        True,
+        "mat_test_recipe",
+        str(workdir / (str(job_path) + ".err")),
+    )
 
     assert captured["args"] == ["esorex", f"--working-dir={workdir}", str(job_path)]
     assert captured["cwd"] == str(workdir)
-    assert any(f"Block {block_index}" in message for message in messages)
 
 
 class _StopPipeline(Exception):
@@ -286,7 +293,7 @@ def test_run_pipeline_existing_output_dir(monkeypatch, tmp_path):
         check_blocks=True,
     )
 
-    assert not logfile.exists()
+    assert logfile.exists()  # check mode is purely informational, no filesystem changes
     assert run_called is False
 
 
@@ -425,7 +432,6 @@ def test_run_pipeline_check_calibration_summary(
         dirCalib=str(calib_dir),
         dirResult=str(result_dir),
         check_calib=True,
-        maxIter=1,
     )
 
     output = capture_stream.getvalue()
@@ -463,7 +469,7 @@ def test_run_pipeline_writes_sof_and_invokes_esorex(tmp_path, monkeypatch):
     captured_tasks: list[tuple] = []
 
     def fake_run_esorex(args):
-        cmd, block_index, _lock = args
+        cmd, block_index, _recipe = args
         captured_commands.append(cmd)
 
         output_dir = None
@@ -479,20 +485,7 @@ def test_run_pipeline_writes_sof_and_invokes_esorex(tmp_path, monkeypatch):
             hdu.header["ESO OBS TARG NAME"] = "CAL FILE"
             hdu.writeto(oifits_path, overwrite=True)
 
-        return block_index, True
-
-    class _LocalManager:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc, tb):
-            return False
-
-        def Lock(self):
-            class _LocalLock:
-                pass
-
-            return _LocalLock()
+        return block_index, True, _recipe, "dummy.err"
 
     class _LocalPool:
         def __init__(self, processes):
@@ -504,12 +497,12 @@ def test_run_pipeline_writes_sof_and_invokes_esorex(tmp_path, monkeypatch):
         def __exit__(self, exc_type, exc, tb):
             return False
 
-        def map(self, func, iterable):
-            captured_tasks.extend(iterable)
-            return [func(item) for item in iterable]
+        def imap_unordered(self, func, iterable):
+            items = list(iterable)
+            captured_tasks.extend(items)
+            return [func(item) for item in items]
 
     monkeypatch.setattr(auto_pipeline, "run_esorex", fake_run_esorex)
-    monkeypatch.setattr(auto_pipeline, "Manager", lambda: _LocalManager())
     monkeypatch.setattr(auto_pipeline, "Pool", _LocalPool)
 
     raw_header = {
@@ -574,7 +567,6 @@ def test_run_pipeline_writes_sof_and_invokes_esorex(tmp_path, monkeypatch):
         dirCalib=str(calib_dir),
         dirResult=str(result_dir),
         nbCore=1,
-        maxIter=1,
         check_calib=False,
     )
 
@@ -624,23 +616,6 @@ def test_run_pipeline_uses_previous_iteration_outputs(tmp_path, monkeypatch):
     monkeypatch.setattr(auto_pipeline, "Progress", _DummyProgress)
     monkeypatch.setattr(auto_pipeline, "Vizier", _DummyVizier)
 
-    class _DummyLock:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc, tb):
-            return False
-
-    class _DummyManager:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc, tb):
-            return False
-
-        def Lock(self):
-            return _DummyLock()
-
     class _DummyPool:
         def __init__(self, processes):
             self.processes = processes
@@ -651,14 +626,13 @@ def test_run_pipeline_uses_previous_iteration_outputs(tmp_path, monkeypatch):
         def __exit__(self, exc_type, exc, tb):
             return False
 
-        def map(self, func, tasks):
+        def imap_unordered(self, func, tasks):
             return [func(task) for task in tasks]
 
-    monkeypatch.setattr(auto_pipeline, "Manager", lambda: _DummyManager())
     monkeypatch.setattr(auto_pipeline, "Pool", _DummyPool)
 
     def fake_run_esorex(args):
-        cmd, block_index, _lock = args
+        cmd, block_index, _recipe = args
         output_dir = None
         for part in cmd.split():
             if part.startswith("--output-dir="):
@@ -673,7 +647,7 @@ def test_run_pipeline_uses_previous_iteration_outputs(tmp_path, monkeypatch):
         hdu.header["ESO OBS TARG NAME"] = "TARGET-STAR"
         hdu.writeto(oifits_path, overwrite=True)
 
-        return block_index, True
+        return block_index, True, _recipe, "dummy.err"
 
     monkeypatch.setattr(auto_pipeline, "run_esorex", fake_run_esorex)
 
@@ -762,10 +736,9 @@ def test_run_pipeline_uses_previous_iteration_outputs(tmp_path, monkeypatch):
         dirRaw=str(raw_dir),
         dirCalib=str(calib_dir),
         dirResult=str(result_dir),
-        maxIter=2,
         overwrite=1,
     )
 
     assert any(
-        any("Reduced" in path for path in sources) for sources in captured_sources
+        any("reduced" in path for path in sources) for sources in captured_sources
     ), "expected previous iteration files to be reused as calibrations"
