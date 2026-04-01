@@ -9,6 +9,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 from astropy.io import fits
+from rich.console import Console
 
 from matisse.core.utils import common, io_utils, log_utils, oifits_reader
 
@@ -739,3 +740,139 @@ def test_show_blocs_status_continue_branch():
 
     should_break = log_utils.show_blocs_status(["cmd"], 1, blocks, check_blocks=True)
     assert should_break is False
+
+
+def test_show_blocs_status_check_blocks_shows_missing_calibration():
+    """In check mode, blocks with status 0 should show 'Missing calibration'."""
+    capture = io.StringIO()
+    wide_console = Console(file=capture, force_terminal=False, width=200)
+    blocks = [
+        {
+            "tplstart": "2025-01-01T00:00:00.HAWAII-2RG",
+            "input": [
+                [
+                    "file.fits",
+                    "TAG",
+                    {
+                        "HIERARCH ESO DET CHIP NAME": "HAWAII-2RG",
+                        "ESO OBS TARG NAME": "T1",
+                    },
+                ]
+            ],
+            "action": "ACTION1",
+            "status": 0,
+            "iter": 1,
+        },
+    ]
+
+    # Temporarily swap console for a wider one
+    original = log_utils.console
+    log_utils.console = wide_console
+    try:
+        should_break = log_utils.show_blocs_status([], 1, blocks, check_blocks=True)
+    finally:
+        log_utils.console = original
+    assert should_break is True
+    output = capture.getvalue()
+    assert "Missing calibration" in output
+
+
+def test_show_blocs_status_preserves_original_block_numbers():
+    """Block numbers (#) in the summary table should match original block indices,
+    not the sorted order."""
+    stream = _reset_console()
+    blocks = [
+        {
+            "tplstart": "2025-01-01T00:00:00.AQUARIUS",
+            "input": [
+                [
+                    "file1.fits",
+                    "TAG",
+                    {
+                        "HIERARCH ESO DET CHIP NAME": "AQUARIUS",
+                        "ESO OBS TARG NAME": "T1",
+                    },
+                ]
+            ],
+            "action": "ACTION_B",
+            "status": 1,
+            "iter": 1,
+        },
+        {
+            "tplstart": "2025-01-01T00:00:00.HAWAII-2RG",
+            "input": [
+                [
+                    "file2.fits",
+                    "TAG",
+                    {
+                        "HIERARCH ESO DET CHIP NAME": "HAWAII-2RG",
+                        "ESO OBS TARG NAME": "T2",
+                    },
+                ]
+            ],
+            "action": "ACTION_A",
+            "status": 1,
+            "iter": 1,
+        },
+    ]
+
+    should_break = log_utils.show_blocs_status([], 1, blocks, check_blocks=False)
+    assert should_break is True
+    output = stream.getvalue()
+    # Both block numbers should be present
+    assert "1" in output
+    assert "2" in output
+
+
+def test_show_calibration_status_not_required_marked_dash():
+    """Calibrations that are not required for a given action should show '–' not '❌'."""
+    stream = _reset_console()
+    blocks = [
+        {
+            "tplstart": "2024-01-01T00:00:00.HAWAII-2RG",
+            "input": [
+                [
+                    "frame.fits",
+                    "DARK",
+                    {
+                        "HIERARCH ESO DET CHIP NAME": "HAWAII-2RG",
+                        "ESO OBS TARG NAME": "CAL",
+                    },
+                ]
+            ],
+            "calib": [
+                ("badpix.fits", "BADPIX"),
+                ("nonlinearity.fits", "NONLINEARITY"),
+            ],
+            "action": "ACTION_MAT_EST_FLAT",
+        }
+    ]
+
+    log_utils.show_calibration_status(blocks, log_utils.console)
+    output = stream.getvalue()
+    assert "Calibration Summary" in output
+    # For ACTION_MAT_EST_FLAT, OBS_FLATFIELD/SHIFT_MAP/KAPPA_MATRIX/JSDC_CAT
+    # are not required, so those columns should show '–' instead of '❌'
+    assert "–" in output
+
+
+def test_save_report_creates_svg(tmp_path):
+    """save_report should write an SVG file in the given directory."""
+    # Record something to the report console before saving
+    log_utils._report_console.print("Test content for report")
+
+    result = log_utils.save_report(tmp_path)
+    assert result is not None
+    assert result.exists()
+    assert result.name == "matisse_report.svg"
+    content = result.read_text(encoding="utf-8")
+    assert "<svg" in content
+
+
+def test_save_report_creates_parent_dirs(tmp_path):
+    """save_report should create parent directories if they don't exist."""
+    nested = tmp_path / "a" / "b" / "c"
+    log_utils._report_console.print("content")
+    result = log_utils.save_report(nested)
+    assert result is not None
+    assert result.exists()

@@ -10,6 +10,7 @@ from astropy.io import fits
 from rich.console import Console
 
 from matisse.core import auto_pipeline
+from matisse.core.lib_auto_pipeline import add_mdfc_fluxes
 from matisse.core.utils import log_utils
 
 
@@ -742,3 +743,169 @@ def test_run_pipeline_uses_previous_iteration_outputs(tmp_path, monkeypatch):
     assert any(
         any("reduced" in path for path in sources) for sources in captured_sources
     ), "expected previous iteration files to be reused as calibrations"
+
+
+# =====================================================================
+# Tests for add_mdfc_fluxes (extracted from auto_pipeline into lib)
+# =====================================================================
+
+
+def test_add_mdfc_fluxes_writes_header_keywords(tmp_path):
+    """add_mdfc_fluxes should write L/M/N flux keywords into FITS headers."""
+    f1 = tmp_path / "target1.fits"
+    _write_fits(f1, **{"ESO OBS TARG NAME": "Vega"})
+
+    vizier = _DummyVizier()
+    add_mdfc_fluxes([f1], vizier)
+
+    with fits.open(f1) as hdul:
+        hdr = hdul[0].header
+        assert hdr["HIERARCH PRO MDFC FLUX L"] == 1.0
+        assert hdr["HIERARCH PRO MDFC FLUX M"] == 2.0
+        assert hdr["HIERARCH PRO MDFC FLUX N"] == 3.0
+
+
+def test_add_mdfc_fluxes_groups_by_target(tmp_path):
+    """Files with the same target should trigger only one Vizier query."""
+    f1 = tmp_path / "a.fits"
+    f2 = tmp_path / "b.fits"
+    _write_fits(f1, **{"ESO OBS TARG NAME": "Sirius"})
+    _write_fits(f2, **{"ESO OBS TARG NAME": "Sirius"})
+
+    query_count = 0
+
+    class _CountingVizier:
+        def query_region(self, *_args, **_kwargs):
+            nonlocal query_count
+            query_count += 1
+            return [[[10.0, 20.0, 30.0]]]
+
+    add_mdfc_fluxes([f1, f2], _CountingVizier())
+
+    assert query_count == 1, "expected a single Vizier query for the same target"
+    for path in [f1, f2]:
+        with fits.open(path) as hdul:
+            assert hdul[0].header["HIERARCH PRO MDFC FLUX L"] == 10.0
+
+
+def test_add_mdfc_fluxes_skips_files_without_target(tmp_path):
+    """Files without ESO OBS TARG NAME should be skipped gracefully."""
+    f1 = tmp_path / "no_target.fits"
+    _write_fits(f1)  # no target keyword
+
+    vizier = _DummyVizier()
+    add_mdfc_fluxes([f1], vizier)
+
+    with fits.open(f1) as hdul:
+        assert "HIERARCH PRO MDFC FLUX L" not in hdul[0].header
+
+
+def test_add_mdfc_fluxes_handles_vizier_failure(tmp_path):
+    """When Vizier raises an exception, the function should not crash."""
+    f1 = tmp_path / "target.fits"
+    _write_fits(f1, **{"ESO OBS TARG NAME": "Unknown"})
+
+    class _FailingVizier:
+        def query_region(self, *_args, **_kwargs):
+            raise ConnectionError("network error")
+
+    add_mdfc_fluxes([f1], _FailingVizier())
+
+    with fits.open(f1) as hdul:
+        assert "HIERARCH PRO MDFC FLUX L" not in hdul[0].header
+
+
+def test_add_mdfc_fluxes_handles_empty_result(tmp_path):
+    """When Vizier returns no results, files should be left unchanged."""
+    f1 = tmp_path / "target.fits"
+    _write_fits(f1, **{"ESO OBS TARG NAME": "NoMatch"})
+
+    class _EmptyVizier:
+        def query_region(self, *_args, **_kwargs):
+            return None
+
+    add_mdfc_fluxes([f1], _EmptyVizier())
+
+    with fits.open(f1) as hdul:
+        assert "HIERARCH PRO MDFC FLUX L" not in hdul[0].header
+
+
+# =====================================================================
+# Test: run_pipeline handles both bands in a single call
+# =====================================================================
+
+
+def test_run_pipeline_processes_both_bands_in_single_call(tmp_path, monkeypatch):
+    """run_pipeline should handle both LM and N band files when skipL=False, skipN=False."""
+    raw_dir = tmp_path / "raw"
+    result_dir = tmp_path / "results"
+    result_dir.mkdir(parents=True, exist_ok=True)
+
+    class _ConsoleStub:
+        def print(self, *_args, **_kwargs):
+            return None
+
+    dummy_console = _ConsoleStub()
+    monkeypatch.setattr(auto_pipeline, "console", dummy_console)
+    monkeypatch.setattr(log_utils, "console", dummy_console)
+    monkeypatch.setattr(auto_pipeline, "Progress", _DummyProgress)
+    monkeypatch.setattr(auto_pipeline, "Vizier", _DummyVizier)
+    monkeypatch.setattr(auto_pipeline, "section", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(auto_pipeline, "iteration_banner", lambda *_args: None)
+
+    lm_path = raw_dir / "LM.fits"
+    n_path = raw_dir / "N.fits"
+    lm_path.parent.mkdir(parents=True, exist_ok=True)
+    lm_path.write_text("")
+    n_path.write_text("")
+
+    def _header(detector: str):
+        hdr = fits.Header()
+        hdr["HIERARCH ESO DPR TYPE"] = "OBJECT"
+        hdr["HIERARCH ESO DPR TECH"] = "INTERFEROMETRY"
+        hdr["HIERARCH ESO DPR CATG"] = "SCIENCE"
+        hdr["HIERARCH ESO DET CHIP NAME"] = detector
+        hdr["HIERARCH ESO INS DIL NAME"] = "LOW"
+        hdr["HIERARCH ESO INS DIN NAME"] = "LOW"
+        hdr["HIERARCH ESO TPL ID"] = "TPL1"
+        hdr["HIERARCH ESO TPL START"] = "2025-01-01T00:00:00"
+        hdr["TEST_DETECTOR"] = detector
+        return hdr
+
+    headers = {
+        str(lm_path): _header("HAWAII-2RG"),
+        str(n_path): _header("AQUARIUS"),
+    }
+
+    selected_detectors: list[str] = []
+
+    def fake_resolve_raw_input(_path):
+        return [str(lm_path), str(n_path)], "manual"
+
+    def fake_getheader(path, _index):
+        return headers[path]
+
+    def fake_type(hdr):
+        selected_detectors.append(hdr["TEST_DETECTOR"])
+        return "TAG"
+
+    def stop_action(*_args, **_kwargs):
+        raise _StopPipeline()
+
+    monkeypatch.setattr(auto_pipeline, "resolve_raw_input", fake_resolve_raw_input)
+    monkeypatch.setattr(auto_pipeline, "getheader", fake_getheader)
+    monkeypatch.setattr(auto_pipeline, "matisse_type", fake_type)
+    monkeypatch.setattr(auto_pipeline, "matisse_action", stop_action)
+    monkeypatch.setattr(auto_pipeline, "matisse_recipes", lambda *a, **k: ("r", "p"))
+
+    with pytest.raises(_StopPipeline):
+        auto_pipeline.run_pipeline(
+            dirRaw=str(raw_dir),
+            dirResult=str(result_dir),
+            skipL=False,
+            skipN=False,
+        )
+
+    # Both detectors should have been processed in the same call
+    assert "HAWAII-2RG" in selected_detectors
+    assert "AQUARIUS" in selected_detectors
