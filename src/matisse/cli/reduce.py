@@ -15,6 +15,7 @@ from matisse.cli.doctor import (
 from matisse.core.auto_pipeline import (
     run_pipeline,
 )
+from matisse.core.tidyup import tidyup_path
 from matisse.core.utils.log_utils import (
     console,
     log,
@@ -163,8 +164,13 @@ def reduce(
             custom_recipes_dir=custom_recipes_dir,
             save_report_svg=save_report,
         )
+
+        tidyup_path(Path(dir_result) / "reduced")
+
         if not check_blocks and not check_calib:
-            log.info(f"[green][SUCCESS] Results saved to {dir_result}/reduced/")
+            log.info(
+                "[green][SUCCESS] Results saved to reduced/ (intermediate) and reduced_OIFITS/ (oifits)"
+            )
             console.rule("[bold green]Reduction completed successfully[/]")
         else:
             console.rule("[bold green]Check mode: no files will be processed[/]")
