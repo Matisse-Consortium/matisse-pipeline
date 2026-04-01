@@ -28,7 +28,7 @@ def run_calibration(
     input_dir: Path,
     output_dir: Path,
     bands: list[str],
-    timespan: float = 0.04,
+    timespan: float = 1,
     cumul_block: bool = True,
     custom_recipes_dir: Path | None = None,
 ) -> None:
@@ -43,7 +43,7 @@ def run_calibration(
     bands : list[str]
         List of spectral bands to process ('N', 'LM').
     timespan : float, optional
-        Time window in days for calibrator matching (default is 0.04).
+        Time window in hours for calibrator matching (default is 1).
     cumul_block : bool, optional
         Enable cumulBlock parameter in esorex (default is True).
     custom_recipes_dir: Path | None = None, optional

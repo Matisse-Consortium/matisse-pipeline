@@ -20,7 +20,7 @@ def calibrate(
         Path.cwd(),
         "--data-dir",
         "-d",
-        help="Directory containing raw MATISSE FITS files (default: current).",
+        help="Directory containing reduced MATISSE OIFITS files (default: current).",
     ),
     resultdir: Path | None = typer.Option(
         None,
@@ -29,10 +29,10 @@ def calibrate(
         help="Directory to store calibrated OIFITS (default: <datadir>_CALIBRATED).",
     ),
     timespan: float = typer.Option(
-        0.04,
+        1,
         "--timespan",
         "-t",
-        help="Time window in days for calibrator association.",
+        help="Time window in hours for calibrator association.",
     ),
     bands: list[str] = typer.Option(
         ["LM", "N"],
@@ -77,7 +77,7 @@ def calibrate(
     section("Configuration")
     console.print(f"[cyan]Raw data directory:[/] {datadir.resolve()}")
     console.print(f"[cyan]Result directory:[/] {resultdir.resolve()}")
-    console.print(f"[magenta]Timespan:[/] {timespan} days")
+    console.print(f"[magenta]Timespan:[/] {timespan} hours")
     console.print(f"[green]Bands:[/] {', '.join(bands)}")
     console.print(f"[yellow]Cumul block:[/] {cumul_block}")
     console.print(f"[dim]Verbose:[/] {'ON' if verbose else 'OFF'}")

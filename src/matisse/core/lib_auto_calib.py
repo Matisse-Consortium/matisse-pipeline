@@ -25,7 +25,7 @@ def generate_sof_files(
     input_dir: Path,
     output_dir: Path,
     band: str,
-    timespan: float = 0.04,
+    timespan: float = 1,
 ) -> list[Path]:
     """Generate SOF files associating targets with calibrators.
 
@@ -38,7 +38,7 @@ def generate_sof_files(
     band : str
         Spectral band flag ('-N' or '-LM').
     timespan : float, optional
-        Time window in days to associate calibrations (default is 0.04).
+        Time window in hours to associate calibrations (default is 1).
 
     Returns
     -------
@@ -109,7 +109,7 @@ def generate_sof_files(
             calibs[i]
             for i in range(len(calibs))
             if (
-                time_diffs[i] < timespan
+                time_diffs[i] < timespan / 24.0
                 and calibs[i]["chip"] == ref_target["chip"]
                 and calibs[i]["dit"] == ref_target["dit"]
             )
