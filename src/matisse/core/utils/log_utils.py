@@ -24,6 +24,12 @@ if IS_TEST:
 else:
     console = Console()
 
+# --- Report console: fixed width, records output for SVG export ---
+REPORT_WIDTH = 140
+_report_console = Console(
+    record=True, width=REPORT_WIDTH, force_terminal=True, file=open("/dev/null", "w")
+)
+
 # --- Configure logging safely ---
 if not logging.getLogger().hasHandlers():
     if IS_TEST:
@@ -61,7 +67,6 @@ def section(title: str) -> None:
 
 def iteration_banner(iter_number: int):
     title = f"🔄 ITERATION {iter_number}"
-    console.print()
     console.print(
         Panel.fit(
             f"[bold white]{title}[/]",
@@ -110,7 +115,7 @@ def show_calibration_status(listRedBlocks, console, detailed_block: int | None =
     table.add_column("Detector", justify="center", style="bold")
     table.add_column("Band", justify="center", style="magenta")
     table.add_column("Action", style="green")
-    table.add_column("Block #", justify="center", style="dim")
+    table.add_column("#", justify="center", style="dim")
 
     # One column per expected tags
     for tag in expected_tags:
@@ -146,8 +151,29 @@ def show_calibration_status(listRedBlocks, console, detailed_block: int | None =
             str(nblock),
         ]
 
+        not_required_cal_dict = {
+            "ACTION_MAT_EST_FLAT": [
+                "OBS_FLATFIELD",
+                "SHIFT_MAP",
+                "KAPPA_MATRIX",
+                "JSDC_CAT",
+            ],
+            "ACTION_MAT_EST_SHIFT": [
+                "SHIFT_MAP",
+                "KAPPA_MATRIX",
+                "JSDC_CAT",
+            ],
+            "ACTION_MAT_EST_KAPPA": [
+                "KAPPA_MATRIX",
+                "JSDC_CAT",
+            ],
+            "ACTION_MAT_RAW_ESTIMATES": [],
+        }
+
         for tag in expected_tags:
             if tag == "KAPPA_MATRIX" and detector == "AQUARIUS":
+                row.append("–")
+            elif tag in not_required_cal_dict[action] and action:
                 row.append("–")
             else:
                 row.append("✅" if tag in tags_present else "❌")
@@ -155,6 +181,8 @@ def show_calibration_status(listRedBlocks, console, detailed_block: int | None =
 
     console.print()
     console.print(table, justify="center")
+    _report_console.print()
+    _report_console.print(table, justify="center")
 
     if detailed_block is None:
         return
@@ -188,15 +216,16 @@ def show_calibration_status(listRedBlocks, console, detailed_block: int | None =
     else:
         for filepath, tag in block["calib"]:
             path = Path(filepath)
-            detail_table.add_row(tag, path.name, str(path))
+            detail_table.add_row(tag, path.name, str(path.parent))
 
     console.print(detail_table, justify="center")
+    _report_console.print(detail_table, justify="center")
 
 
-def show_blocs_status(listCmdEsorex, iterNumber, maxIter, listRedBlocks, check_blocks):
+def show_blocs_status(listCmdEsorex, iterNumber, listRedBlocks, check_blocks):
     """Print table containing the different block informations."""
 
-    if listCmdEsorex == [] or iterNumber == maxIter:
+    if listCmdEsorex == []:
         table = Table(
             title="\n- MATISSE final reduction summary -",
             show_header=True,
@@ -205,6 +234,7 @@ def show_blocs_status(listCmdEsorex, iterNumber, maxIter, listRedBlocks, check_b
             expand=True,
         )
 
+        table.add_column("#", style="bold white", no_wrap=True, justify="right")
         table.add_column("TPL Start", style="cyan", no_wrap=True)
         table.add_column("Target", style="yellow")
         table.add_column("Tag", style="white")
@@ -215,50 +245,73 @@ def show_blocs_status(listCmdEsorex, iterNumber, maxIter, listRedBlocks, check_b
 
         n_ok = n_skip = n_fail = 0
 
-        listRedBlocks = sorted(
-            listRedBlocks,
-            key=lambda e: (
-                e.get("action", ""),
-                get_detector_name(e),
-                get_target_name(e),
+        # Attach original block number before sorting
+        indexed_blocks = [(i + 1, elt) for i, elt in enumerate(listRedBlocks)]
+        indexed_blocks.sort(
+            key=lambda pair: (
+                pair[1].get("action", ""),
+                get_detector_name(pair[1]),
+                get_target_name(pair[1]),
             ),
         )
 
-        for elt in listRedBlocks:
+        for block_num, elt in indexed_blocks:
             tplstart = elt.get("tplstart", "N/A")
             tag = elt["input"][0][1]
             detector = get_detector_name(elt)
             action = elt.get("action", "N/A")
             status = elt.get("status", 0)
-            iteration = elt.get("iter", "?")
+            # iteration = elt.get("iter", "?")
             target = get_target_name(elt)
 
             # Determine message and style
             if status == 1:
-                msg = f"Completed (iter {iteration})"
+                msg = "Completed"
                 table.add_row(
-                    tplstart, target, tag, detector, action, "✅ [green]OK[/]", msg
+                    str(block_num),
+                    tplstart,
+                    target,
+                    tag,
+                    detector,
+                    action,
+                    "✅ [green]OK[/]",
+                    msg,
                 )
                 n_ok += 1
             elif status == -2:
-                msg = "Ignored (check mode)"
+                msg = "To be processed (check mode)"
                 table.add_row(
-                    tplstart, target, tag, detector, action, "[cyan]SKIP[/]", msg
+                    str(block_num),
+                    tplstart,
+                    target,
+                    tag,
+                    detector,
+                    action,
+                    "[cyan]SKIP[/]",
+                    msg,
                 )
                 n_skip += 1
             else:
                 if elt["action"] == "NO-ACTION":
                     msg = "Data not taken into account by the Pipeline"
                     table.add_row(
-                        tplstart, target, tag, detector, action, "❌ [red]FAIL[/]", msg
+                        str(block_num),
+                        tplstart,
+                        target,
+                        tag,
+                        detector,
+                        action,
+                        "❌ [red]FAIL[/]",
+                        msg,
                     )
                     n_fail += 1
                 else:
                     if check_blocks:
-                        msg = "Reduction Block not processed - Check mode"
+                        msg = "Missing calibration (Check mode)"
                     else:
-                        msg = "Reduction Block not processed - Missing calibration"
+                        msg = "Missing calibration"
                     table.add_row(
+                        str(block_num),
                         tplstart,
                         target,
                         tag,
@@ -272,17 +325,38 @@ def show_blocs_status(listCmdEsorex, iterNumber, maxIter, listRedBlocks, check_b
         console.print(table)
 
         # --- Global pipeline statistics ---
-        console.print(
-            Panel.fit(
-                f"[green]Successful:[/] {n_ok}  |  [yellow]Skipped:[/] {n_skip}  |  [red]Failed:[/] {n_fail}  |  [cyan]Total:[/] {len(listRedBlocks)}",
-                title="[bold]Global Pipeline Statistics[/]",
-                border_style="cyan",
-            ),
-            justify="center",
+        stats_panel = Panel.fit(
+            f"[green]Successful:[/] {n_ok}  |  [yellow]Skipped:[/] {n_skip}  |  [red]Failed:[/] {n_fail}  |  [cyan]Total:[/] {len(listRedBlocks)}",
+            title="[bold]Global Pipeline Statistics[/]",
+            border_style="cyan",
         )
-
+        console.print(stats_panel, justify="center")
         console.rule(style="dim")
+
+        # Mirror to report console
+        _report_console.print(table)
+        _report_console.print(stats_panel, justify="center")
+        _report_console.rule(style="dim")
 
         # Break logic (to be called inside a loop)
         return True  # signal to break the loop
     return False
+
+
+def save_report(output_dir: str | Path) -> Path | None:
+    """Export the recorded report console output as an SVG file.
+
+    The SVG uses a fixed width (REPORT_WIDTH columns) so the layout
+    is consistent regardless of the user's terminal size.
+
+    Returns the path to the saved file, or None if nothing was recorded.
+    """
+    svg_text = _report_console.export_svg(title="MATISSE Pipeline Report")
+    if not svg_text.strip():
+        return None
+
+    output_path = Path(output_dir) / "matisse_report.svg"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(svg_text, encoding="utf-8")
+    log.info(f"Pipeline report saved to [magenta]{output_path}[/magenta]")
+    return output_path

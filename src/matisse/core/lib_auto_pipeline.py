@@ -21,6 +21,7 @@ import numpy as np
 from astropy.io import fits
 from astropy.io.fits import getheader
 from astropy.time import Time
+from astroquery.vizier import Vizier
 
 # Typing annotation (return of the matisse_calib function).
 CalibEntry = tuple[str, str]
@@ -323,7 +324,7 @@ def matisse_calib(
                 else:
                     res.append((elt, tagCalib))
                     nbCalib += 1
-        logger.info(f"action est_flat, found {nbCalib} calibration files")
+        logger.debug(f"action est_flat, found {nbCalib} calibration files")
         if nbCalib == 3:
             status = 1
         else:
@@ -435,21 +436,19 @@ def matisse_calib(
                 )
 
                 # Add check for different DIT (just warning info)
-                list_calib_no_good_dit = []
-                if is_flatfield and (
+                if (
                     is_same_detector
                     and is_same_mode
                     and (is_hawaii_fast or is_hawaii_slow or is_aquarius)
+                    and not is_dit_matching
+                    and not _warning_shown
                 ):
-                    if elt not in list_calib_no_good_dit:
-                        list_calib_no_good_dit.append(
-                            [elt, keyDetSeq1DitCalib, keyDetSeq1Dit]
-                        )
-                        msg_dit = f"Different DIT detected for flatfield (cal={keyDetSeq1DitCalib}/sci={keyDetSeq1Dit} s)"
-                        if len(list_calib_no_good_dit) != 0:
-                            if not _warning_shown:
-                                logger.warning(msg_dit)
-                                _warning_shown = True
+                    logger.debug(
+                        "Different DIT detected for flatfield (cal=%.4f / sci=%.4f s)",
+                        keyDetSeq1DitCalib,
+                        keyDetSeq1Dit,
+                    )
+                    _warning_shown = True
 
                 # Check real condition on flatfield
 
@@ -625,7 +624,7 @@ def matisse_calib(
         if (keyDetChipName == "AQUARIUS" and keyInsPinId != "PHOTO") or (
             keyDetChipName == "HAWAII-2RG" and keyInsPilId != "PHOTO"
         ):
-            logger.info(f"action raw_estimates, found {nbCalib} calibration files")
+            logger.debug(f"action raw_estimates, found {nbCalib} calibration files")
             if nbCalib >= 4:
                 status = 1
             else:
@@ -811,7 +810,7 @@ def matisse_calib(
                     res.append((elt, tagCalib))
                     nbCalib += 1
 
-        logger.info(f"action est_kappa, found {nbCalib} calibration files")
+        logger.debug(f"action est_kappa, found {nbCalib} calibration files")
         if nbCalib == 4:
             status = 1
         else:
@@ -950,7 +949,7 @@ def matisse_calib(
                 else:
                     res.append((elt, tagCalib))
                     nbCalib += 1
-        logger.info(f"action est_shift, found {nbCalib} calibration files")
+        logger.debug(f"action est_shift, found {nbCalib} calibration files")
         if nbCalib == 3:
             status = 1
         else:
@@ -1236,3 +1235,95 @@ def matisse_type(header: Mapping[str, Any]) -> str:
     else:
         res = catg or ""
     return res
+
+
+def add_mdfc_fluxes(
+    oifits_files: Sequence[str | Path],
+    vizier_cat: Vizier,
+) -> None:
+    """Add MDFC catalog fluxes (L, M, N) to OIFITS file headers.
+
+    For each file, queries CDS Vizier for the target name found
+    in the ``ESO OBS TARG NAME`` header keyword and writes the
+    ``PRO MDFC FLUX L/M/N`` keywords with the retrieved values.
+
+    Parameters
+    ----------
+    oifits_files : Sequence[str | Path]
+        Paths to OIFITS FITS files to update in-place.
+    vizier_cat : Vizier
+        Pre-configured ``astroquery.vizier.Vizier`` instance
+        targeting the MDFC catalog (II/361).
+    """
+    # Group files by target to query Vizier once per unique target.
+    files_by_target: dict[str, list[Path]] = {}
+    no_target_files: list[Path] = []
+    for oifits_path in oifits_files:
+        oifits_path = Path(oifits_path)
+        try:
+            hdr = fits.getheader(oifits_path, 0)
+            targetname = hdr.get("ESO OBS TARG NAME")
+        except Exception:
+            no_target_files.append(oifits_path)
+            continue
+        if targetname is None:
+            no_target_files.append(oifits_path)
+            continue
+        files_by_target.setdefault(targetname, []).append(oifits_path)
+
+    if no_target_files:
+        logger.warning(
+            "No target name (ESO OBS TARG NAME) in %d file(s), skipping MDFC.",
+            len(no_target_files),
+        )
+
+    for targetname, paths in files_by_target.items():
+        try:
+            result = vizier_cat.query_region(targetname, radius="20s")
+        except Exception:
+            logger.warning(
+                "MDFC query failed for %s (%d file(s)).",
+                targetname,
+                len(paths),
+                exc_info=True,
+            )
+            continue
+
+        if result is None or len(result) == 0 or len(result[0]) == 0:
+            logger.debug("Target %s not found in MDFC catalog.", targetname)
+            continue
+
+        row = result[0][0]
+        fluxL, fluxM, fluxN = float(row[0]), float(row[1]), float(row[2])
+
+        for oifits_path in paths:
+            try:
+                with fits.open(oifits_path, mode="update") as hdu:
+                    hdu[0].header["HIERARCH PRO MDFC FLUX L"] = (
+                        fluxL,
+                        "Flux (Jy) in L band from MDFC catalog",
+                    )
+                    hdu[0].header["HIERARCH PRO MDFC FLUX M"] = (
+                        fluxM,
+                        "Flux (Jy) in M band from MDFC catalog",
+                    )
+                    hdu[0].header["HIERARCH PRO MDFC FLUX N"] = (
+                        fluxN,
+                        "Flux (Jy) in N band from MDFC catalog",
+                    )
+                    hdu.flush()
+            except Exception:
+                logger.warning(
+                    "Failed to write MDFC fluxes in %s.",
+                    oifits_path.name,
+                    exc_info=True,
+                )
+
+        logger.info(
+            "Added MDFC fluxes for %s (L=%.2f, M=%.2f, N=%.2f Jy) in %d file(s).",
+            targetname,
+            fluxL,
+            fluxM,
+            fluxN,
+            len(paths),
+        )

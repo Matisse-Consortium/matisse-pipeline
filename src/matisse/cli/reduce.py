@@ -15,6 +15,7 @@ from matisse.cli.doctor import (
 from matisse.core.auto_pipeline import (
     run_pipeline,
 )
+from matisse.core.tidyup import tidyup_path
 from matisse.core.utils.log_utils import (
     console,
     log,
@@ -47,9 +48,6 @@ def reduce(
         "--result-dir",
         "-r",
         help="Directory to store reduction results (default: current).",
-    ),
-    max_iter: int = typer.Option(
-        1, "--max-iter", help="Maximum number of reduction iterations."
     ),
     nbcore: int = typer.Option(1, "--nbcore", "-n", help="Number of CPU cores to use."),
     overwrite: bool = typer.Option(
@@ -96,14 +94,23 @@ def reduce(
         help="Show calibration filenames attached to the given reduction block number.",
     ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose mode"),
+    save_report: bool = typer.Option(
+        False,
+        "--save-report",
+        help="Save pipeline summary tables as an SVG report in the result directory.",
+    ),
 ):
     """
     Run automatic reduction to produce uncalibrated oifits files and processed calibration maps if needed beforehand.
 
     It processes raw MATISSE data files and produces
-    uncalibrated results. This pipeline is designed to run over multiple iterations (--max-iter)
+    uncalibrated results. This pipeline is designed to run over multiple iterations
     in order to first reduce calibration files (flat, kappa matrix, shift map, etc.), and
     then science files using the calibration products obtained in previous iterations.
+    All reduction steps are handled automatically by the pipeline, which determines which
+    files need to be processed and in which order. The final products are stored in *reduced/*
+    subdirectories within the specified result directory (current by default).
+
     We encourage users to run the pipeline using multiple cores (--nbcore) to speed up
     processing time. The final results are stored in FITS files in the --result-dir
     directory and can later be formatted into OIFITS files using the *format* command.
@@ -128,7 +135,6 @@ def reduce(
     _show_recipe_info(custom_recipes_dir)
     console.print(f"[magenta]CPU cores:[/] {nbcore}")
     console.print(f"[green]Resolution:[/] {resol.value}")
-    console.print(f"[yellow]Max iterations:[/] {max_iter}")
     console.print(f"[dim]Verbose:[/] {'ON' if not verbose else 'OFF'}")
 
     # --- 4. Resolve paths for core function ---
@@ -138,60 +144,36 @@ def reduce(
 
     # --- 5. Run pipeline and handle errors ---
     try:
-        if not skip_l:
-            log.info("L/M band data will be processed.")
-            run_pipeline(
-                dirRaw=dir_raw,
-                dirResult=dir_result,
-                dirCalib=dir_calib,
-                nbCore=nbcore,
-                resol=resol,
-                paramL=param_l,
-                paramN=param_n,
-                overwrite=int(overwrite),
-                maxIter=max_iter,
-                skipL=False,
-                skipN=True,
-                tplstartsel=tplstart,
-                tplidsel=tplid,
-                spectralBinning=spectral_binning,
-                check_blocks=check_blocks,
-                check_calib=check_calib,
-                detailed_block=detailed_block,
-                custom_recipes_dir=custom_recipes_dir,
+        run_pipeline(
+            dirRaw=dir_raw,
+            dirResult=dir_result,
+            dirCalib=dir_calib,
+            nbCore=nbcore,
+            resol=resol,
+            paramL=param_l,
+            paramN=param_n,
+            overwrite=int(overwrite),
+            skipL=skip_l,
+            skipN=skip_n,
+            tplstartsel=tplstart,
+            tplidsel=tplid,
+            spectralBinning=spectral_binning,
+            check_blocks=check_blocks,
+            check_calib=check_calib,
+            detailed_block=detailed_block,
+            custom_recipes_dir=custom_recipes_dir,
+            save_report_svg=save_report,
+        )
+
+        tidyup_path(Path(dir_result) / "reduced")
+
+        if not check_blocks and not check_calib:
+            log.info(
+                "[green][SUCCESS] Results saved to reduced/ (intermediate) and reduced_OIFITS/ (oifits)"
             )
-            if not check_blocks and not check_calib:
-                log.info(f"[green][SUCCESS] Results saved to {dir_result}")
-                console.rule("[bold green]Reduction completed successfully[/]")
-            else:
-                console.rule("[bold green]Check mode: no files will be processed[/]")
-        if not skip_n:
-            log.info("N band data will be processed.")
-            run_pipeline(
-                dirRaw=dir_raw,
-                dirResult=dir_result,
-                dirCalib=dir_calib,
-                nbCore=nbcore,
-                resol=resol,
-                paramL=param_l,
-                paramN=param_n,
-                overwrite=int(overwrite),
-                maxIter=max_iter,
-                skipL=True,
-                skipN=False,
-                tplstartsel=tplstart,
-                tplidsel=tplid,
-                spectralBinning=spectral_binning,
-                check_blocks=check_blocks,
-                check_calib=check_calib,
-                detailed_block=detailed_block,
-                custom_recipes_dir=custom_recipes_dir,
-            )
-            if not check_blocks and not check_calib:
-                log.info(f"[green][SUCCESS] Results saved to {dir_result}")
-                console.rule("[bold green]Reduction completed successfully[/]")
-            else:
-                console.rule("[bold green]Check mode: no files will be processed[/]")
+            console.rule("[bold green]Reduction completed successfully[/]")
+        else:
+            console.rule("[bold green]Check mode: no files will be processed[/]")
     except Exception as err:
         console.rule("[bold red]Reduction failed[/]")
         log.exception("MATISSE pipeline execution failed.")
