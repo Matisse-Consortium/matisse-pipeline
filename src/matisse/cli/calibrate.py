@@ -26,7 +26,7 @@ def calibrate(
         None,
         "--result-dir",
         "-r",
-        help="Directory to store calibrated OIFITS (default: <datadir>_CALIBRATED).",
+        help="Directory to store calibrated OIFITS (default: calibrated).",
     ),
     timespan: float = typer.Option(
         1,
@@ -41,7 +41,7 @@ def calibrate(
         help="Spectral bands to process (N and/or LM).",
     ),
     cumul_block: bool = typer.Option(
-        True,
+        False,
         "--cumul-block/--no-cumul-block",
         help="Enable cumulBlock parameter in mat_cal_oifits.",
     ),
@@ -70,8 +70,8 @@ def calibrate(
 
     # --- 2. Handle defaults ---
     if resultdir is None:
-        resultdir = datadir.parent / f"{datadir.name}_CALIBRATED"
-        log.info("Result directory not provided. Using <datadir>_CALIBRATED.")
+        resultdir = Path("calibrated")
+        log.debug("Result directory not provided. Using calibrated/.")
 
     # --- 3. Show configuration ---
     section("Configuration")
@@ -100,7 +100,9 @@ def calibrate(
             custom_recipes_dir=custom_recipes_dir,
         )
 
-        log.info(f"[green][SUCCESS] Calibrated files saved to {resultdir.resolve()}")
+        log.info(
+            f"[green][SUCCESS] Calibrated files saved to[/] [magenta]{Path(*resultdir.resolve().parts[-2:])}/[/]"
+        )
         console.rule("[bold green]Calibration completed successfully[/]")
 
     except Exception as err:

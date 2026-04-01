@@ -45,7 +45,7 @@ def generate_sof_files(
     list[Path]
         List of generated SOF file paths.
     """
-    log.info(f"Scanning FITS files in {input_dir} for band {band}")
+    log.info(f"Scanning oifits files in [magenta]{input_dir.name}/[/]")
 
     targets = []
     calibs = []
@@ -131,14 +131,14 @@ def generate_sof_files(
 
         sof_files.append(sof_path)
 
-    log.info(f"Generated {len(sof_files)} SOF files for band {band}")
+    log.info(f"Generated {len(sof_files)} SOF files")
     return sof_files
 
 
 def run_esorex_calibration(
     sof_path: Path,
     output_dir: Path,
-    cumul_block: bool = True,
+    cumul_block: bool = False,
     custom_recipes_dir: Path | None = None,
 ) -> bool:
     """Run esorex mat_cal_oifits recipe on a SOF file.
@@ -150,7 +150,7 @@ def run_esorex_calibration(
     output_dir : Path
         Working directory for esorex.
     cumul_block : bool, optional
-        Enable cumulBlock parameter (default is True).
+        Enable cumulBlock parameter (default is False).
     custom_recipes_dir : Path or None, optional
         Custom directory for MATISSE recipes.
 
@@ -259,4 +259,4 @@ def cleanup_intermediate_files(output_dir: Path) -> None:
                 log.warning(f"Failed to remove {file_path.name}: {e}")
 
     if removed_count > 0:
-        log.info(f"Cleaned up {removed_count} intermediate file(s)")
+        log.info(f"Cleaned up {removed_count} intermediate file(s)\n")
