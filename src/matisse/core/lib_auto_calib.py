@@ -84,7 +84,20 @@ def generate_sof_files(
                 }
             )
 
-    log.info(f"Found {len(targets)} targets and {len(calibs)} calibrators.")
+    n_targets = len(targets)
+    n_calibs = len(calibs)
+    if n_targets == 0 and n_calibs == 0:
+        log.warning(
+            f"No target/calibrator files found for {band.replace('-', '')} band"
+        )
+    elif n_targets == 0 and n_calibs > 0:
+        log.warning(f"No target files found for band {band.replace('-', '')}")
+    else:
+        log.warning(f"No calibrator files found for band {band.replace('-', '')}")
+
+    if n_targets > 0 and n_calibs > 0:
+        log.info(f"Found {n_targets} targets and {n_calibs} calibrators.")
+
     # Group targets by TPL START
     tpl_groups = defaultdict(list)
     for target in targets:
@@ -131,7 +144,8 @@ def generate_sof_files(
 
         sof_files.append(sof_path)
 
-    log.info(f"Generated {len(sof_files)} SOF files")
+    if n_targets > 0 and n_calibs > 0:
+        log.info(f"Generated {len(sof_files)} SOF files")
     return sof_files
 
 
