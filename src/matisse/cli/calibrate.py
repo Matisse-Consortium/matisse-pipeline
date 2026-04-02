@@ -43,7 +43,7 @@ def calibrate(
     cumul_block: bool = typer.Option(
         False,
         "--cumul-block/--no-cumul-block",
-        help="Enable cumulBlock parameter in mat_cal_oifits.",
+        help="Enable cumulBlock parameter in mat_cal_oifits (rarely used, expert only).",
     ),
     custom_recipes_dir: Path | None = typer.Option(
         None,
@@ -79,7 +79,6 @@ def calibrate(
     console.print(f"[cyan]Result directory:[/] {resultdir.resolve()}")
     console.print(f"[magenta]Timespan:[/] {timespan} hours")
     console.print(f"[green]Bands:[/] {', '.join(bands)}")
-    console.print(f"[yellow]Cumul block:[/] {cumul_block}")
     console.print(f"[dim]Verbose:[/] {'ON' if verbose else 'OFF'}")
 
     # --- 4. Validate bands ---
