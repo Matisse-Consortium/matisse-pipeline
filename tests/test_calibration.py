@@ -40,7 +40,7 @@ def skip_without_esorex():
 
 def test_generate_calibration_sof_files(data_dir, tmp_path):
     # Generate SOF files
-    arbitraty_large_timespan = 0.02  # days
+    arbitraty_large_timespan = 300  # hours
     sof_files = lac.generate_sof_files(
         input_dir=data_dir,
         band="-LM",
@@ -66,7 +66,7 @@ def test_run_calibration_pipeline(data_dir, tmp_path, skip_without_esorex):
         input_dir=data_dir,
         output_dir=resultdir,
         bands=["LM", "N"],
-        timespan=0.02,  # days
+        timespan=1,  # hours
         cumul_block=False,
     )
 
@@ -93,7 +93,7 @@ def test_run_calibration_pipeline_cumul(data_dir, tmp_path, skip_without_esorex)
         input_dir=data_dir,
         output_dir=resultdir,
         bands=["LM", "N"],
-        timespan=0.02,  # days
+        timespan=1,  # hours
         cumul_block=True,
     )
 

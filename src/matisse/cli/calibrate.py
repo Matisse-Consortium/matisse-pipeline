@@ -20,19 +20,19 @@ def calibrate(
         Path.cwd(),
         "--data-dir",
         "-d",
-        help="Directory containing raw MATISSE FITS files (default: current).",
+        help="Directory containing reduced MATISSE OIFITS files (default: current).",
     ),
     resultdir: Path | None = typer.Option(
         None,
         "--result-dir",
         "-r",
-        help="Directory to store calibrated OIFITS (default: <datadir>_CALIBRATED).",
+        help="Directory to store calibrated OIFITS (default: calibrated).",
     ),
     timespan: float = typer.Option(
-        0.04,
+        1,
         "--timespan",
         "-t",
-        help="Time window in days for calibrator association.",
+        help="Time window in hours for calibrator association.",
     ),
     bands: list[str] = typer.Option(
         ["LM", "N"],
@@ -41,9 +41,9 @@ def calibrate(
         help="Spectral bands to process (N and/or LM).",
     ),
     cumul_block: bool = typer.Option(
-        True,
+        False,
         "--cumul-block/--no-cumul-block",
-        help="Enable cumulBlock parameter in mat_cal_oifits.",
+        help="Enable cumulBlock parameter in mat_cal_oifits (rarely used, expert only).",
     ),
     custom_recipes_dir: Path | None = typer.Option(
         None,
@@ -70,16 +70,15 @@ def calibrate(
 
     # --- 2. Handle defaults ---
     if resultdir is None:
-        resultdir = datadir.parent / f"{datadir.name}_CALIBRATED"
-        log.info("Result directory not provided. Using <datadir>_CALIBRATED.")
+        resultdir = Path("calibrated")
+        log.debug("Result directory not provided. Using calibrated/.")
 
     # --- 3. Show configuration ---
     section("Configuration")
     console.print(f"[cyan]Raw data directory:[/] {datadir.resolve()}")
     console.print(f"[cyan]Result directory:[/] {resultdir.resolve()}")
-    console.print(f"[magenta]Timespan:[/] {timespan} days")
+    console.print(f"[magenta]Timespan:[/] {timespan} hours")
     console.print(f"[green]Bands:[/] {', '.join(bands)}")
-    console.print(f"[yellow]Cumul block:[/] {cumul_block}")
     console.print(f"[dim]Verbose:[/] {'ON' if verbose else 'OFF'}")
 
     # --- 4. Validate bands ---
@@ -100,7 +99,9 @@ def calibrate(
             custom_recipes_dir=custom_recipes_dir,
         )
 
-        log.info(f"[green][SUCCESS] Calibrated files saved to {resultdir.resolve()}")
+        log.info(
+            f"[green][SUCCESS] Calibrated files saved to[/] [magenta]{Path(*resultdir.resolve().parts[-2:])}/[/]"
+        )
         console.rule("[bold green]Calibration completed successfully[/]")
 
     except Exception as err:

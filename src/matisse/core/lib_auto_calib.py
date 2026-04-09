@@ -25,7 +25,7 @@ def generate_sof_files(
     input_dir: Path,
     output_dir: Path,
     band: str,
-    timespan: float = 0.04,
+    timespan: float = 1,
 ) -> list[Path]:
     """Generate SOF files associating targets with calibrators.
 
@@ -38,14 +38,14 @@ def generate_sof_files(
     band : str
         Spectral band flag ('-N' or '-LM').
     timespan : float, optional
-        Time window in days to associate calibrations (default is 0.04).
+        Time window in hours to associate calibrations (default is 1).
 
     Returns
     -------
     list[Path]
         List of generated SOF file paths.
     """
-    log.info(f"Scanning FITS files in {input_dir} for band {band}")
+    log.info(f"Scanning oifits files in [magenta]{input_dir.name}/[/]")
 
     targets = []
     calibs = []
@@ -84,7 +84,19 @@ def generate_sof_files(
                 }
             )
 
-    log.info(f"Found {len(targets)} targets and {len(calibs)} calibrators.")
+    n_targets = len(targets)
+    n_calibs = len(calibs)
+    if n_targets == 0 and n_calibs == 0:
+        log.warning(
+            f"No target/calibrator files found for {band.replace('-', '')} band"
+        )
+    elif n_targets == 0 and n_calibs > 0:
+        log.warning(f"No target files found for band {band.replace('-', '')}")
+    elif n_targets > 0 and n_calibs == 0:
+        log.warning(f"No calibrator files found for band {band.replace('-', '')}")
+    else:
+        log.info(f"Found {n_targets} targets and {n_calibs} calibrators.")
+
     # Group targets by TPL START
     tpl_groups = defaultdict(list)
     for target in targets:
@@ -109,7 +121,7 @@ def generate_sof_files(
             calibs[i]
             for i in range(len(calibs))
             if (
-                time_diffs[i] < timespan
+                time_diffs[i] < timespan / 24.0
                 and calibs[i]["chip"] == ref_target["chip"]
                 and calibs[i]["dit"] == ref_target["dit"]
             )
@@ -131,14 +143,15 @@ def generate_sof_files(
 
         sof_files.append(sof_path)
 
-    log.info(f"Generated {len(sof_files)} SOF files for band {band}")
+    if n_targets > 0 and n_calibs > 0:
+        log.info(f"Generated {len(sof_files)} SOF files")
     return sof_files
 
 
 def run_esorex_calibration(
     sof_path: Path,
     output_dir: Path,
-    cumul_block: bool = True,
+    cumul_block: bool = False,
     custom_recipes_dir: Path | None = None,
 ) -> bool:
     """Run esorex mat_cal_oifits recipe on a SOF file.
@@ -150,7 +163,7 @@ def run_esorex_calibration(
     output_dir : Path
         Working directory for esorex.
     cumul_block : bool, optional
-        Enable cumulBlock parameter (default is True).
+        Enable cumulBlock parameter (default is False).
     custom_recipes_dir : Path or None, optional
         Custom directory for MATISSE recipes.
 
@@ -259,4 +272,4 @@ def cleanup_intermediate_files(output_dir: Path) -> None:
                 log.warning(f"Failed to remove {file_path.name}: {e}")
 
     if removed_count > 0:
-        log.info(f"Cleaned up {removed_count} intermediate file(s)")
+        log.info(f"Cleaned up {removed_count} intermediate file(s)\n")
