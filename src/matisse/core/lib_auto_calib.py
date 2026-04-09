@@ -92,10 +92,9 @@ def generate_sof_files(
         )
     elif n_targets == 0 and n_calibs > 0:
         log.warning(f"No target files found for band {band.replace('-', '')}")
-    else:
+    elif n_targets > 0 and n_calibs == 0:
         log.warning(f"No calibrator files found for band {band.replace('-', '')}")
-
-    if n_targets > 0 and n_calibs > 0:
+    else:
         log.info(f"Found {n_targets} targets and {n_calibs} calibrators.")
 
     # Group targets by TPL START

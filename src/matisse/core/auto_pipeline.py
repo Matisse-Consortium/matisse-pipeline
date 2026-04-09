@@ -670,6 +670,7 @@ def run_pipeline(
                     with open(sofname, "w", encoding="utf-8") as fp:
                         fp.write(sof_content)
 
+                band_to_print = "LM" if "HAWAII" in red_block["tplstart"] else "N"
                 if os.path.exists(outputDir):
                     if print_sof_status:
                         _blog(
@@ -697,8 +698,9 @@ def run_pipeline(
                             continue
                 else:
                     p = Path(outputDir)
+                    path_to_print = p.relative_to(p.parents[1])
                     _blog(
-                        f"Create outputDir : [magenta]{p.relative_to(p.parents[1])}[/magenta]."
+                        f"Creates: [magenta]{path_to_print}[/magenta] ({band_to_print} band)."
                     )
                     os.mkdir(outputDir)
 
