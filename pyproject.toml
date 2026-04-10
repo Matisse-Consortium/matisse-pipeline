@@ -55,6 +55,12 @@ Issues = "https://github.com/Matisse-Consortium/matisse-pipeline/issues"
 typecheck = ["mypy>=1.14.1", "types-termcolor>=1.1.6.2"]
 test = ["pytest>=7.2.1", "pytest-cov>=4.1.0", "ruff", "pre-commit"]
 
+[tool.flit.sdist]
+include = [
+    "src/matisse/core/bcd/master_mn_calibration/*.csv",
+    "src/matisse/core/bcd/master_mn_calibration/*.txt",
+]
+
 [tool.ruff]
 # Exclude all Python files in the legacy folder
 exclude = ["src/matisse/legacy/"]

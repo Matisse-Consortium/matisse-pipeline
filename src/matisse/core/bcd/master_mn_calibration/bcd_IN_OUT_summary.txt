@@ -1,0 +1,56 @@
+======================================================================
+BCD (Beam Commuting Device) CORRECTION SUMMARY
+======================================================================
+
+Generated: 2026-01-26 14:11:17
+
+PROCESSING PARAMETERS
+----------------------------------------------------------------------
+BCD Mode:              IN_OUT
+Spectral Band:         LM
+Spectral Resolution:   LOW
+Extension Type:        OI_VIS2
+Polynomial Order:      1
+
+DATA PROCESSING
+----------------------------------------------------------------------
+Number of File Pairs:  4
+Wavelength Range:      2.80 - 5.16 µm
+Number of Channels:    118
+
+FILTERING & VALIDATION
+----------------------------------------------------------------------
+Outlier Threshold:     1.5 σ
+Correlated Flux Only:  False
+Min Coherence Time:    5 ms
+Wavelength Low:        3.20 µm
+Wavelength High:       4.00 µm
+
+BASELINE PAIRS
+----------------------------------------------------------------------
+Pair 1:  [2] U2-U4 ↔ [3] U2-U3
+Pair 2:  [4] U1-U4 ↔ [5] U1-U3
+
+SPECTRAL WINDOWS (for polynomial fits)
+----------------------------------------------------------------------
+Window 0: 3.20 - 4.00 µm
+Window 1: 4.55 - 4.90 µm
+
+OUTPUT FILES
+----------------------------------------------------------------------
+Corrections CSV:       bcd_IN_OUT_spectral_corrections.csv
+Polynomial Coeffs CSV: bcd_IN_OUT_poly_coeffs.csv
+Output Directory:      /Users/asoulain/Documents/Projet_MATISSE/MATISSE_MN_analysis/magic_outputs/MN_cal_selection_LM_noChop
+
+BASELINES
+----------------------------------------------------------------------
+  [0] U4-U3
+  [1] U1-U2
+  [2] U2-U4
+  [3] U2-U3
+  [4] U1-U4
+  [5] U1-U3
+
+======================================================================
+For more details, see the CSV files above.
+======================================================================

@@ -11,6 +11,14 @@ import numpy as np
 import pandas as pd
 from astropy.io import fits
 from numpy.typing import NDArray
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TaskProgressColumn,
+    TextColumn,
+    TimeRemainingColumn,
+)
 
 from matisse.core.bcd.io_utils import load_bcd_corrections
 from matisse.core.bcd.merge import merge_by_tpl_start
@@ -315,12 +323,13 @@ def fit_magic_numbers(
 
 def apply_bcd_corrections(
     data_dir: Path,
-    corrections_dir: Path,
+    corrections_dir: Path | None = None,
     chopping: bool = False,
     merge: bool = True,
     split_chopping: bool = True,
     plot: bool = True,
     verbose: bool = False,
+    sub_band: str | None = None,
 ) -> None:
     """Apply BCD polynomial corrections for all BCD positions.
 
@@ -349,6 +358,8 @@ def apply_bcd_corrections(
         Generate correction plots. Default is True.
     verbose : bool, optional
         Show detailed metrics tables for each file. Default is False.
+    sub_band : {"L", "M", "N"} or None, optional
+        Sub-band to use when computing quality metrics. Default is None (full band).
     """
 
     bases = _find_calibrator_filename_bases(data_dir, chopping=chopping)
@@ -357,32 +368,45 @@ def apply_bcd_corrections(
 
     # Log processing configuration
     console.rule("[bold cyan]BCD Correction Application[/bold cyan]")
-    log.info(f"Data directory: {data_dir.resolve()}")
-    log.info(f"Corrections directory: {corrections_dir.resolve()}")
-    log.info(f"Number of calibrator files found: {len(bases)}")
-    log.info(f"Chopping mode: {'enabled' if chopping else 'disabled'}")
-    log.info(f"Merge after correction: {'enabled' if merge else 'disabled'}")
-    log.info(f"Verbose output: {'enabled' if verbose else 'disabled'}")
-
-    if len(bases) > 1:
-        log.info(f"Processing files: {', '.join(bases)}")
+    console.print(f"[cyan]Data directory:[/] {data_dir.resolve()}")
+    if corrections_dir is not None:
+        console.print(f"[cyan]Corrections directory:[/] {corrections_dir.resolve()}")
     else:
-        log.info(f"Processing file: {bases[0]}")
+        console.print(
+            "[cyan]Corrections directory:[/] [green]bundled master calibration[/green]"
+        )
+    console.print(f"[yellow]Chopping:[/] {'ON' if chopping else 'OFF'}")
+    console.print(f"[yellow]Merge after correction:[/] {'ON' if merge else 'OFF'}")
+    console.print(f"[dim]Verbose:[/] {'ON' if verbose else 'OFF'}")
+
+    console.print(f"[magenta]Target files found:[/] {len(bases)} -> {', '.join(bases)}")
     console.print()
 
     dict_all = {}
-    for base in bases:
-        try:
-            dict_all[base] = _apply_bcd_corrections_single(
-                data_dir, corrections_dir, base
-            )
-        except FileNotFoundError as e:
-            console.print(
-                f"[red]Error: Missing correction file for {base}[/red]\n"
-                f"  {e}\n"
-                f"[yellow]Skipping this file...please run 'matisse bcd compute' first to generate corrections.[/yellow]"
-            )
-            continue
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+        TimeRemainingColumn(),
+        console=console,
+        transient=True,
+    ) as progress:
+        task = progress.add_task("[cyan]Applying BCD corrections...", total=len(bases))
+        for base in bases:
+            progress.update(task, description=f"[cyan]Applying corrections: {base}...")
+            try:
+                dict_all[base] = _apply_bcd_corrections_single(
+                    data_dir, corrections_dir, base
+                )
+            except FileNotFoundError as e:
+                console.print(
+                    f"[red]Error: Missing correction file for {base}[/red]\n"
+                    f"  {e}\n"
+                    f"[yellow]Skipping this file...please run 'matisse bcd compute' first to generate corrections.[/yellow]"
+                )
+            finally:
+                progress.advance(task)
 
     chop_status = "noChop"
     if chopping:
@@ -410,7 +434,9 @@ def apply_bcd_corrections(
         out_dir = _save_corrected_oifits(dict_data, data_dir, filename_base)
 
         # Compute and print correction quality metrics
-        df_metrics = compute_correction_metrics(dict_data, dict_raw, corrections_dir)
+        df_metrics = compute_correction_metrics(
+            dict_data, dict_raw, corrections_dir, sub_band=sub_band
+        )
 
         if verbose:
             console.rule(f"[bold cyan]{filename_base}[/bold cyan]")
@@ -529,7 +555,7 @@ def _save_corrected_oifits(dict_data, data_dir, filename_base, chopping=False):
         Mapping {bcd_mode: Path} of the written files.
     """
     data_dir = Path(data_dir)
-    out_dir = data_dir.parent / f"{data_dir.name}_bcd_corr"
+    out_dir = data_dir.parent / "bcd_corrected"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     chop_status = "noChop"
@@ -597,7 +623,7 @@ def _apply_bcd_corrections_single(
         data_bcd_corr = deepcopy(data_bcd)
 
         # Load correction coefficients
-        df_coeffs = load_bcd_corrections(corrections_dir, bcd_mode)
+        df_coeffs = load_bcd_corrections(bcd_mode, corrections_dir)
         bcd_order = BCD_BASELINE_MAP[bcd_mode]
         wl = data_bcd.wavelength * 1e6
 

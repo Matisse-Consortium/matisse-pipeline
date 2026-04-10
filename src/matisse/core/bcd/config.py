@@ -17,9 +17,6 @@ class BCDConfig:
     # Extension type
     extension: str = "OI_VIS2"
 
-    # prefix of the savec npy (e.g.: MN2025)
-    prefix: str = "MN2025"
-
     # Spectral configuration
     band: str = "LM"
     resolution: str = "LOW"
@@ -48,10 +45,8 @@ class BCDConfig:
 
         if self.extension == "OI_VIS":
             self.vis_column = "visamp"
-            self.save_prefix = f"{self.prefix}_Vis_{self.bcd_mode}"
         elif self.extension == "OI_VIS2":
             self.vis_column = "vis2data"
-            self.save_prefix = f"{self.prefix}_{self.bcd_mode}"
         else:
             raise ValueError(f"Unknown extension: {self.extension}")
 

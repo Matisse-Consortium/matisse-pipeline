@@ -12,8 +12,20 @@ _RATIO_GOOD = 1.0  # ≤ 1.0: green (noise-limited)
 _RATIO_WARN = 2.0  # ≤ 2.0: yellow (acceptable)
 # > 2.0: red (poor correction)
 
+# Wavelength ranges (µm) for each sub-band
+_SUBBAND_RANGES: dict[str, tuple[float, float]] = {
+    "L": (2.8, 4.2),
+    "M": (4.5, 5.0),
+    "N": (8.0, 13.0),
+}
 
-def compute_correction_metrics(dict_corr, dict_raw, corrections_dir):
+
+def compute_correction_metrics(
+    dict_corr,
+    dict_raw,
+    corrections_dir,
+    sub_band: str | None = None,
+):
     """Compute quality metrics for the BCD correction.
 
     For each baseline, computes (in-band only):
@@ -32,6 +44,9 @@ def compute_correction_metrics(dict_corr, dict_raw, corrections_dir):
         Uncorrected (raw) data dictionary.
     corrections_dir : Path
         Directory containing the CSV correction files.
+    sub_band : {"L", "M", "N"} or None, optional
+        Restrict computation to a specific sub-band wavelength range.
+        When *None* (default) the full range from the CSV files is used.
 
     Returns
     -------
@@ -42,11 +57,20 @@ def compute_correction_metrics(dict_corr, dict_raw, corrections_dir):
     wl = dict_corr["OUT_OUT"].wavelength * 1e6
 
     # Build band mask
-    df0 = load_bcd_corrections(corrections_dir, BCD_MODES_TO_CORRECT[0])
+    df0 = load_bcd_corrections(BCD_MODES_TO_CORRECT[0], corrections_dir)
     wl_ranges = df0[["wl_start_um", "wl_end_um"]].drop_duplicates()
     band_mask = np.zeros(len(wl), dtype=bool)
     for _, row in wl_ranges.iterrows():
         band_mask |= (wl >= row["wl_start_um"]) & (wl <= row["wl_end_um"])
+
+    # Optionally restrict to a specific sub-band
+    if sub_band is not None:
+        if sub_band not in _SUBBAND_RANGES:
+            raise ValueError(
+                f"Unknown sub_band '{sub_band}'. Choose from {list(_SUBBAND_RANGES)}."
+            )
+        wl_lo, wl_hi = _SUBBAND_RANGES[sub_band]
+        band_mask &= (wl >= wl_lo) & (wl <= wl_hi)
 
     rows = []
     for i in range(6):

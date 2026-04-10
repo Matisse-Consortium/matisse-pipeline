@@ -46,6 +46,15 @@ def cleanup_iter_dirs():
             if iter_dir.exists():
                 shutil.rmtree(iter_dir, ignore_errors=True)
 
+    # Default output directories from CLI commands run in tests.
+    for output_dir in (
+        Path("bcd_calibration_results"),
+        Path("reduced"),
+        Path("reduced_OIFITS"),
+    ):
+        if output_dir.exists():
+            shutil.rmtree(output_dir, ignore_errors=True)
+
 
 @pytest.fixture
 def base_mock_data():
