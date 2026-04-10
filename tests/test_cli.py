@@ -715,7 +715,7 @@ def bcd_apply_outputs(bcd_dir, tmp_path_factory):
 
     assert result_apply.exit_code == 0, result_apply.output
 
-    corrected_dir = temp_data_dir.parent / f"{temp_data_dir.name}_bcd_corr"
+    corrected_dir = temp_data_dir.parent / "bcd_corrected/"
 
     return {
         "temp_data_dir": temp_data_dir,
