@@ -797,7 +797,11 @@ def _ratio_color(ratio):
 
 
 def plot_bcd_correction(
-    dict_data, corrections_dir=None, title="BCD comparison", data_merged=None
+    dict_data,
+    corrections_dir=None,
+    title="BCD comparison",
+    data_merged=None,
+    show: bool = False,
 ):
     """Plot V2 for all 4 BCD positions on a single figure.
 
@@ -814,6 +818,8 @@ def plot_bcd_correction(
         Figure title.
     data_merged : OIFitsData, optional
         If provided, overlay the merged vis2 in black on the V2 panels.
+    show : bool, optional
+        If True, display the figure interactively when using an interactive backend.
     """
     _apply_plot_style()
 
@@ -823,12 +829,12 @@ def plot_bcd_correction(
     # Pre-load wavelength ranges (only once)
     wl_ranges = None
     if corrections_dir is not None:
-        df0 = load_bcd_corrections(corrections_dir, BCD_MODES_TO_CORRECT[0])
+        df0 = load_bcd_corrections(BCD_MODES_TO_CORRECT[0], corrections_dir)
         wl_ranges = df0[["wl_start_um", "wl_end_um"]].drop_duplicates()
 
     # Build a gridspec: 2 rows of baselines x 3 columns,
     # each column has a V2 panel (height_ratio=3) + STD panel (height_ratio=1)
-    fig = plt.figure(figsize=(13, 6.5))
+    fig = plt.figure(figsize=(13, 6.8))
     gs = fig.add_gridspec(
         nrows=4,
         ncols=3,
@@ -836,7 +842,7 @@ def plot_bcd_correction(
         hspace=0.0,
         wspace=0.05,
     )
-    fig.suptitle(title, fontsize=13, fontweight="bold")
+    fig.suptitle(title, fontsize=13, fontweight="bold", y=0.985, linespacing=1.15)
 
     # Build the combined band mask for STD computation
     band_mask = np.zeros(len(wl), dtype=bool)
@@ -1047,13 +1053,13 @@ def plot_bcd_correction(
             ax_std.tick_params(axis="y", labelleft=False)
 
     fig.subplots_adjust(
-        left=0.06, right=0.98, bottom=0.07, top=0.94, hspace=0.0, wspace=0.05
+        left=0.06, right=0.98, bottom=0.07, top=0.87, hspace=0.0, wspace=0.05
     )
 
     # Only show if using an interactive backend
     import matplotlib
 
-    if matplotlib.get_backend().lower() not in ("agg", "template"):
+    if show and matplotlib.get_backend().lower() not in ("agg", "template"):
         plt.show()
 
     return fig
@@ -1106,6 +1112,7 @@ def _find_merged_file(data_dir: Path, filename_base: str) -> Path | None:
 def compare_bcd_corrections(
     data_dir: Path,
     corrections_dir: Path | None = None,
+    show_plot: bool = False,
 ) -> list[plt.Figure]:
     """Auto-detect corrected BCD files and display comparison plots.
 
@@ -1121,6 +1128,8 @@ def compare_bcd_corrections(
         (``*_bcd_corr.fits``).
     corrections_dir : Path, optional
         Directory with correction CSVs (used to shade calibration windows).
+    show_plot : bool, optional
+        If True, display comparison figures interactively.
 
     Returns
     -------
@@ -1144,6 +1153,9 @@ def compare_bcd_corrections(
     console.rule("[bold cyan]BCD Correction Comparison[/bold cyan]")
     log.info(f"Directory: {data_dir.resolve()}")
     log.info(f"Found {len(bases)} TPL start group(s)")
+
+    # Save comparison plots as PDF next to the input corrected data files.
+    export_dir = data_dir
 
     figures: list[plt.Figure] = []
 
@@ -1201,16 +1213,51 @@ def compare_bcd_corrections(
         except Exception:
             pass
 
-        title = f"BCD comparison — {base}"
+        outout = dict_data["OUT_OUT"]
+        target_name = outout.target_name or "Unknown target"
+        band_name = outout.band or "Unknown band"
+        dispersion_name = outout.dispersion_name or "Unknown dispersion"
+        array_config = "Unknown array"
+        if getattr(outout, "sta_name", None) is not None:
+            sta_values = [
+                str(s).strip()
+                for s in np.atleast_1d(outout.sta_name).tolist()
+                if str(s).strip()
+            ]
+            if sta_values:
+                array_config = "".join(sta_values)
+
+        title_lines = [
+            f"Target: {target_name}",
+            f"Band: {band_name} | DISP: {dispersion_name} | ARRAY: {array_config}",
+        ]
         if tpl_start:
-            title += f" (TPL {tpl_start})"
+            title_lines.append(f"TPL START: {tpl_start}")
+        else:
+            title_lines.append(f"Group: {base}")
+        title = "\n".join(title_lines)
 
         fig = plot_bcd_correction(
             dict_data,
             corrections_dir=corrections_dir,
             title=title,
             data_merged=merged_data,
+            show=False,
         )
+
+        safe_base = re.sub(r"[^A-Za-z0-9_.-]+", "_", base).strip("._")
+        if not safe_base:
+            safe_base = "comparison"
+        pdf_path = export_dir / f"{safe_base}_bcd_compare.pdf"
+        fig.savefig(pdf_path, format="pdf", bbox_inches="tight")
+        log.info(f"  Saved PDF: {pdf_path}")
+
         figures.append(fig)
+
+    if show_plot and figures:
+        import matplotlib
+
+        if matplotlib.get_backend().lower() not in ("agg", "template"):
+            plt.show()
 
     return figures
