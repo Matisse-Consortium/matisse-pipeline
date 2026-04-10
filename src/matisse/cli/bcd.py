@@ -269,10 +269,9 @@ def apply(
         help="Directory containing OIFITS files (e.g., *_OIFITS/).",
         exists=True,
     ),
-    corrections_dir: Path = typer.Argument(
-        ...,
-        help="Directory containing BCD correction files.",
-        exists=True,
+    corrections_dir: Path | None = typer.Argument(
+        None,
+        help="Directory containing BCD correction files (default: bundled master calibration).",
     ),
     chopping: bool = typer.Option(
         False,
@@ -294,7 +293,12 @@ def apply(
     split_chopping: bool = typer.Option(
         False,
         "--split-chopping",
-        help="When merging, keep chopped and unchoppedfiles separate instead of merging them together.",
+        help="When merging, keep chopped and unchopped files separate instead of merging them together.",
+    ),
+    sub_band: str | None = typer.Option(
+        None,
+        "--sub-band",
+        help="Sub-band for quality metrics: L (2.8-4.2 um), M (4.5-5.0 um), N (8-13 um). Default: full band.",
     ),
     verbose: bool = typer.Option(
         False,
@@ -317,6 +321,7 @@ def apply(
         verbose=verbose,
         plot=plot,
         split_chopping=split_chopping,
+        sub_band=sub_band,
     )
     raise typer.Exit(code=0)
 
@@ -385,6 +390,12 @@ def compare(
         help="Directory with correction CSVs (shades calibration windows on plots).",
         exists=True,
     ),
+    plot: bool = typer.Option(
+        False,
+        "--plot",
+        "-p",
+        help="Display interactive comparison figures (disabled by default; PDFs are always saved).",
+    ),
 ) -> None:
     """
     Compare BCD corrections across all modes for each TPL start.
@@ -400,6 +411,7 @@ def compare(
         compare_bcd_corrections(
             data_dir=data_dir,
             corrections_dir=corrections_dir,
+            show_plot=plot,
         )
     except FileNotFoundError as e:
         console.print(f"[bold red]✗[/bold red] {e}", style="red")
