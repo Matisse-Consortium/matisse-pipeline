@@ -50,7 +50,7 @@ app = typer.Typer(help="BCD (Beam Commuting Device) correction tools")
 def compute(
     input_dirs: list[Path] | None = typer.Argument(
         None,
-        help="One or more directories containing OIFITS files (e.g., /data/2019*/*_OIFITS). Required unless using --results-dir to plot existing results.",
+        help="One or more directories containing OIFITS files (e.g. reduced_OIFITS). Required unless using --results-dir to plot existing results.",
         exists=True,
     ),
     bcd_mode: BCDMode = typer.Option(
@@ -75,17 +75,11 @@ def compute(
         "-e",
         help="OIFITS extension type (OI_VIS or OI_VIS2).",
     ),
-    prefix: str = typer.Option(
-        "MN2025",
-        "--prefix",
-        "-p",
-        help="Prefix of the npy files to store magic numbers.",
-    ),
-    output_dir: Path | None = typer.Option(
-        None,
+    output_dir: Path = typer.Option(
+        Path("bcd_calibration_results"),
         "--output-dir",
         "-o",
-        help="Output directory for correction files (default: <prefix>_results in current directory).",
+        help="Output directory for correction files.",
     ),
     wavelength_range: list[float] = typer.Option(
         [3.3, 3.8],
@@ -142,10 +136,8 @@ def compute(
     log_level = logging.DEBUG if verbose else logging.INFO
     logging.getLogger("matisse").setLevel(log_level)
 
-    # Set default output_dir based on prefix if not provided
-    if output_dir is None:
-        output_dir = Path.cwd() / f"{prefix.lower()}_results"
-        output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     # Determine which modes to process
     modes_to_process = (
@@ -196,7 +188,6 @@ def compute(
 
             config = BCDConfig(
                 bcd_mode=current_mode.value,
-                prefix=prefix.upper(),
                 band=band.value,
                 resolution=resolution.value,
                 extension=extension.upper(),
