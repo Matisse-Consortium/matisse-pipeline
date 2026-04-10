@@ -36,8 +36,6 @@ def test_magic_num_cli_runs_with_real_lamp(
             "--output-dir",
             str(tmp_path),
             "--plot",
-            "--prefix",
-            "TESTMN",
         ],
         catch_exceptions=False,
     )
