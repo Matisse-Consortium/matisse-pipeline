@@ -63,8 +63,8 @@ def reduce(
         "--resol",
         help="Spectral resolution.",
     ),
-    spectral_binning: str = typer.Option(
-        "", "--spectral-binning", help="Spectral binning to improve SNR."
+    spectral_average: str = typer.Option(
+        "", "--spectral-average", help="Spectral average to improve SNR."
     ),
     custom_recipes_dir: Path | None = typer.Option(
         None,
@@ -88,6 +88,11 @@ def reduce(
         False,
         "--check-cal",
         help="Check if calibration files already processed.",
+    ),
+    check_files: bool = typer.Option(
+        False,
+        "--check-files",
+        help="Check raw FITS files and their headers without running the pipeline.",
     ),
     detailed_block: int | None = typer.Option(
         None,
@@ -160,12 +165,13 @@ def reduce(
             skipN=skip_n,
             tplstartsel=tplstart,
             tplidsel=tplid,
-            spectralBinning=spectral_binning,
+            spectralAverage=spectral_average,
             check_blocks=check_blocks,
             check_calib=check_calib,
             detailed_block=detailed_block,
             custom_recipes_dir=custom_recipes_dir,
             save_report_svg=save_report,
+            inventory=check_files,
         )
 
         tidyup_path(Path(dir_result) / "reduced")

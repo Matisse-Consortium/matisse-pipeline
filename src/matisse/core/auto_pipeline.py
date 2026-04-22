@@ -36,6 +36,7 @@ from matisse.core.lib_auto_pipeline import (
     matisse_calib,
     matisse_recipes,
     matisse_type,
+    probe_spectral_param_name,
 )
 from matisse.core.utils.common import remove_double_parameter
 from matisse.core.utils.io_utils import resolve_raw_input
@@ -47,6 +48,7 @@ from matisse.core.utils.log_utils import (
     section,
     show_blocs_status,
     show_calibration_status,
+    show_files_inventory,
 )
 
 
@@ -144,17 +146,28 @@ def run_pipeline(
     skipN: bool = False,
     tplstartsel: str = "",
     tplidsel: str = "",
-    spectralBinning: str = "",
+    spectralAverage: str = "",
     check_blocks: bool = False,
     check_calib: bool = False,
     detailed_block: int | None = None,
     custom_recipes_dir: Path | None = None,
     save_report_svg: bool = False,
+    inventory: bool = False,
 ):
     """Main function to run MATISSE automatic pipeline."""
 
     # --- Section header ---
     section("Starting raw data reduction")
+
+    # --- Detect which spectral param name is supported by installed recipes ---
+    spectral_param = probe_spectral_param_name(recipe_dir=custom_recipes_dir)
+    if spectral_param == "spectralBinning":
+        log.warning(
+            "Detected legacy recipe parameter [yellow]spectralBinning[/yellow]. "
+            "Upgrade MATISSE recipes to use spectralAverage."
+        )
+    else:
+        log.debug("Using current recipe parameter: spectralAverage.")
 
     # --- Setup Vizier to collect MATISSE magnitudes ---
     vizier_cat_mdfc = Vizier(
@@ -162,7 +175,6 @@ def run_pipeline(
     )
 
     # 1) Resolve raw input into a normalized list of FITS files
-
     try:
         list_raw, input_origin = resolve_raw_input(dirRaw)
     except FileNotFoundError as err:
@@ -209,6 +221,10 @@ def run_pipeline(
 
     # Keep a reference to all headers before filtering for skip reporting
     allhdr_all = list(allhdr)
+
+    if inventory:
+        show_files_inventory(list_raw, allhdr, console)
+        return 0  # Exit after showing inventory if requested
 
     listRawSorted = []
     allhdrSorted = []
@@ -450,20 +466,20 @@ def run_pipeline(
 
             if action == "ACTION_MAT_RAW_ESTIMATES":
                 if hdr["HIERARCH ESO DET CHIP NAME"] == "AQUARIUS":
-                    if spectralBinning != "":
-                        paramN += " --spectralBinning=" + spectralBinning
+                    if spectralAverage != "":
+                        paramN += f" --{spectral_param}=" + spectralAverage
                     else:
-                        paramN += " --spectralBinning=7"
+                        paramN += f" --{spectral_param}=7"
 
                     if paramN == "":
                         red_block["param"] = param
                     else:
                         red_block["param"] = paramN + " " + param
                 else:
-                    if spectralBinning != "":
-                        paramL += " --spectralBinning=" + spectralBinning
+                    if spectralAverage != "":
+                        paramL += f" --{spectral_param}=" + spectralAverage
                     else:
-                        paramL += " --spectralBinning=5"
+                        paramL += f" --{spectral_param}=5"
 
                     if paramL == "":
                         red_block["param"] = param
@@ -811,7 +827,7 @@ def run_pipeline(
         ]
         add_mdfc_fluxes(list_oifits_files, vizier_cat_mdfc)
 
-        if show_blocs_status(listCmdEsorex, iterNumber, list_red_blocks, check_blocks):
+        if show_blocs_status(listCmdEsorex, list_red_blocks, check_blocks):
             break
 
         if iterNumber >= MAX_SAFETY_ITER:

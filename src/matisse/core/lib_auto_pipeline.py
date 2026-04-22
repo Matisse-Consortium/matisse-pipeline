@@ -13,6 +13,8 @@ MATISSE data reduction pipeline.
 """
 
 import logging
+import subprocess
+import tempfile
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -27,6 +29,39 @@ from astroquery.vizier import Vizier
 CalibEntry = tuple[str, str]
 
 logger = logging.getLogger(__name__)
+
+
+def probe_spectral_param_name(recipe_dir: Path | None = None) -> str:
+    """Return the spectral averaging parameter name supported by the installed recipes.
+
+    MATISSE recipes were renamed between versions:
+
+    - ``spectralBinning`` (older releases)
+    - ``spectralAverage`` (current releases)
+
+    Queries ``esorex --man mat_raw_estimates`` to detect which name is present
+    in the recipe's help text.  Falls back to ``spectralAverage`` when esorex
+    is not available or the output is inconclusive.
+    """
+    cmd = ["esorex"]
+    if recipe_dir is not None:
+        cmd += [f"--recipe-dir={recipe_dir}"]
+    cmd += ["--man", "mat_raw_estimates"]
+
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            proc = subprocess.run(
+                cmd, capture_output=True, text=True, check=False, cwd=tmpdir
+            )
+        output = proc.stdout + proc.stderr
+        if "spectralAverage" in output:
+            return "spectralAverage"
+        if "spectralBinning" in output:
+            return "spectralBinning"
+    except FileNotFoundError:
+        pass  # esorex not in PATH — caller handles this separately
+
+    return "spectralAverage"  # default to current name
 
 
 class headerCache:
