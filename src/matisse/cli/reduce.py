@@ -28,6 +28,7 @@ class Resolution(str, Enum):
     LOW = "LOW"
     MED = "MED"
     HIGH = "HIGH"
+    ALL = ""
 
 
 def reduce(
@@ -58,7 +59,7 @@ def reduce(
     skip_l: bool = typer.Option(False, "--skipL", help="Skip L band data."),
     skip_n: bool = typer.Option(False, "--skipN", help="Skip N band data."),
     resol: Resolution = typer.Option(
-        Resolution.LOW,
+        Resolution.ALL,
         "--resol",
         help="Spectral resolution.",
     ),
@@ -134,7 +135,9 @@ def reduce(
     console.print(f"[cyan]Result directory:[/] {resultdir.resolve()}")
     _show_recipe_info(custom_recipes_dir)
     console.print(f"[magenta]CPU cores:[/] {nbcore}")
-    console.print(f"[green]Resolution:[/] {resol.value}")
+    console.print(
+        f"[green]Resolution:[/] {resol.value if resol.value != '' else 'ALL'}"
+    )
     console.print(f"[dim]Verbose:[/] {'ON' if not verbose else 'OFF'}")
 
     # --- 4. Resolve paths for core function ---
