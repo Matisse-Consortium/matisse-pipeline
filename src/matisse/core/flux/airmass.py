@@ -30,7 +30,7 @@ from matisse.core.flux.utils import (
     find_nearest_idx,
     get_dl_coeffs,
     get_dlambda,
-    get_spectral_binning,
+    get_spectral_average,
 )
 
 logger = logging.getLogger(__name__)
@@ -425,7 +425,7 @@ def compute_airmass_correction(
     kernel_width_px = 10.0
 
     dl_coeffs_sci = get_dl_coeffs(hdul_sci)
-    binning_sci = get_spectral_binning(hdul_sci)
+    binning_sci = get_spectral_average(hdul_sci)
     trans_sci_final = resample_to_matisse_resolution(
         wl_um_sci,
         trans_sci,
@@ -436,7 +436,7 @@ def compute_airmass_correction(
     )
 
     dl_coeffs_cal = get_dl_coeffs(hdul_cal)
-    binning_cal = get_spectral_binning(hdul_cal)
+    binning_cal = get_spectral_average(hdul_cal)
     trans_cal_final = resample_to_matisse_resolution(
         wl_um_cal,
         trans_cal,

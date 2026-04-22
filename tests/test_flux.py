@@ -58,19 +58,19 @@ def test_get_dl_coeffs_aquarius_high():
     assert coeffs[0] == pytest.approx(-8.02e-05, rel=1e-3)
 
 
-def test_get_spectral_binning_found_and_missing():
+def test_get_spectral_average_found_and_missing():
     hdul_found = _make_hdul(
         **{
             "HIERARCH ESO PRO REC1 PARAM1 NAME": "otherParam",
-            "HIERARCH ESO PRO REC1 PARAM2 NAME": "spectralBinning",
+            "HIERARCH ESO PRO REC1 PARAM2 NAME": "spectralAverage",
             "HIERARCH ESO PRO REC1 PARAM2 VALUE": 3,
         }
     )
     hdul_missing = _make_hdul()
 
     try:
-        assert utils.get_spectral_binning(hdul_found) == 3.0
-        assert np.isnan(utils.get_spectral_binning(hdul_missing))
+        assert utils.get_spectral_average(hdul_found) == 3.0
+        assert np.isnan(utils.get_spectral_average(hdul_missing))
     finally:
         hdul_found.close()
         hdul_missing.close()

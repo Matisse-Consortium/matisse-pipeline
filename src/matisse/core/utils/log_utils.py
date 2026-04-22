@@ -222,7 +222,7 @@ def show_calibration_status(listRedBlocks, console, detailed_block: int | None =
     _report_console.print(detail_table, justify="center")
 
 
-def show_blocs_status(listCmdEsorex, iterNumber, listRedBlocks, check_blocks):
+def show_blocs_status(listCmdEsorex, listRedBlocks, check_blocks):
     """Print table containing the different block informations."""
 
     if listCmdEsorex == []:
@@ -352,6 +352,43 @@ def show_blocs_status(listCmdEsorex, iterNumber, listRedBlocks, check_blocks):
         # Break logic (to be called inside a loop)
         return True  # signal to break the loop
     return False
+
+
+def show_files_inventory(list_raw, allhdr, console):
+    """Print table containing the different files informations."""
+    table = Table(
+        title="\n- MATISSE inventory -",
+        show_header=True,
+        header_style="bold magenta",
+        title_style="bold cyan",
+        expand=True,
+    )
+
+    table.add_column("#", style="bold white", no_wrap=True, justify="right")
+    table.add_column("File", style="cyan")
+    table.add_column("Status", justify="center", style="bold")
+    table.add_column("Message", style="dim")
+
+    # Example data, replace with actual file status
+    files = [
+        ("reduced/data1.oifits", "OK"),
+        ("reduced/data2.oifits", "SKIP"),
+        ("reduced/data3.oifits", "FAIL"),
+    ]
+
+    for i, (filename, status) in enumerate(files, start=1):
+        if status == "OK":
+            msg = "File processed successfully"
+            table.add_row(str(i), filename, "✅ [green]OK[/]", msg)
+        elif status == "SKIP":
+            msg = "File skipped due to missing calibration"
+            table.add_row(str(i), filename, "[yellow]SKIP[/]", msg)
+        else:
+            msg = "File failed to process"
+            table.add_row(str(i), filename, "❌ [red]FAIL[/]", msg)
+
+    console.print(table)
+    _report_console.print(table)
 
 
 def save_report(output_dir: str | Path) -> Path | None:
