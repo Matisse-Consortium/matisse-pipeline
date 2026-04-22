@@ -145,11 +145,11 @@ def get_dl_coeffs(hdul: fits.HDUList) -> list[float]:
     return _DL_COEFFS_TABLE[key]
 
 
-def get_spectral_binning(hdul: fits.HDUList) -> float:
-    """Extract the spectral binning parameter from reduction recipe headers.
+def get_spectral_average(hdul: fits.HDUList) -> float:
+    """Extract the spectral average parameter from reduction recipe headers.
 
     The DRS stores recipe parameters as numbered PARAM keywords in the
-    primary header. This scans them to find ``spectralBinning``.
+    primary header. This scans them to find ``spectralAverage``.
 
     Parameters
     ----------
@@ -162,17 +162,20 @@ def get_spectral_binning(hdul: fits.HDUList) -> float:
         Spectral binning value, or ``nan`` if not found.
     """
     header = hdul[0].header
-    spectral_binning = float("nan")
+    spectral_average = float("nan")
 
     for i in range(1, 20):
         name_key = f"HIERARCH ESO PRO REC1 PARAM{i} NAME"
-        if name_key in header and "spectralBinning" in header[name_key]:
+        if name_key in header and (
+            "spectralAverage" in header[name_key]
+            or "spectralBinning" in header[name_key]
+        ):
             value_key = f"HIERARCH ESO PRO REC1 PARAM{i} VALUE"
-            spectral_binning = float(header[value_key])
-            logger.debug("Spectral binning = %.1f (from PARAM%d)", spectral_binning, i)
+            spectral_average = float(header[value_key])
+            logger.debug("Spectral average = %.1f (from PARAM%d)", spectral_average, i)
             break
 
-    return spectral_binning
+    return spectral_average
 
 
 def find_nearest_idx(array: list[float] | np.ndarray, value: float) -> int:

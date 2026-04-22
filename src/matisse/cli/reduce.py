@@ -28,6 +28,7 @@ class Resolution(str, Enum):
     LOW = "LOW"
     MED = "MED"
     HIGH = "HIGH"
+    ALL = ""
 
 
 def reduce(
@@ -58,12 +59,12 @@ def reduce(
     skip_l: bool = typer.Option(False, "--skipL", help="Skip L band data."),
     skip_n: bool = typer.Option(False, "--skipN", help="Skip N band data."),
     resol: Resolution = typer.Option(
-        Resolution.LOW,
+        Resolution.ALL,
         "--resol",
         help="Spectral resolution.",
     ),
-    spectral_binning: str = typer.Option(
-        "", "--spectral-binning", help="Spectral binning to improve SNR."
+    spectral_average: str = typer.Option(
+        "", "--spectral-average", help="Spectral average to improve SNR."
     ),
     custom_recipes_dir: Path | None = typer.Option(
         None,
@@ -87,6 +88,11 @@ def reduce(
         False,
         "--check-cal",
         help="Check if calibration files already processed.",
+    ),
+    check_files: bool = typer.Option(
+        False,
+        "--check-files",
+        help="Check raw FITS files and their headers without running the pipeline.",
     ),
     detailed_block: int | None = typer.Option(
         None,
@@ -134,7 +140,9 @@ def reduce(
     console.print(f"[cyan]Result directory:[/] {resultdir.resolve()}")
     _show_recipe_info(custom_recipes_dir)
     console.print(f"[magenta]CPU cores:[/] {nbcore}")
-    console.print(f"[green]Resolution:[/] {resol.value}")
+    console.print(
+        f"[green]Resolution:[/] {resol.value if resol.value != '' else 'ALL'}"
+    )
     console.print(f"[dim]Verbose:[/] {'ON' if not verbose else 'OFF'}")
 
     # --- 4. Resolve paths for core function ---
@@ -157,12 +165,13 @@ def reduce(
             skipN=skip_n,
             tplstartsel=tplstart,
             tplidsel=tplid,
-            spectralBinning=spectral_binning,
+            spectralAverage=spectral_average,
             check_blocks=check_blocks,
             check_calib=check_calib,
             detailed_block=detailed_block,
             custom_recipes_dir=custom_recipes_dir,
             save_report_svg=save_report,
+            inventory=check_files,
         )
 
         tidyup_path(Path(dir_result) / "reduced")

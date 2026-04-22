@@ -711,7 +711,7 @@ def test_show_blocs_status_breaks_loop():
         },
     ]
 
-    should_break = log_utils.show_blocs_status([], 1, blocks, check_blocks=False)
+    should_break = log_utils.show_blocs_status([], blocks, check_blocks=False)
     assert should_break is True
     output = stream.getvalue()
     assert "Global Pipeline Statistics" in output
@@ -738,7 +738,7 @@ def test_show_blocs_status_continue_branch():
         }
     ]
 
-    should_break = log_utils.show_blocs_status(["cmd"], 1, blocks, check_blocks=True)
+    should_break = log_utils.show_blocs_status(["cmd"], blocks, check_blocks=True)
     assert should_break is False
 
 
@@ -769,7 +769,7 @@ def test_show_blocs_status_check_blocks_shows_missing_calibration():
     original = log_utils.console
     log_utils.console = wide_console
     try:
-        should_break = log_utils.show_blocs_status([], 1, blocks, check_blocks=True)
+        should_break = log_utils.show_blocs_status([], blocks, check_blocks=True)
     finally:
         log_utils.console = original
     assert should_break is True
@@ -816,7 +816,7 @@ def test_show_blocs_status_preserves_original_block_numbers():
         },
     ]
 
-    should_break = log_utils.show_blocs_status([], 1, blocks, check_blocks=False)
+    should_break = log_utils.show_blocs_status([], blocks, check_blocks=False)
     assert should_break is True
     output = stream.getvalue()
     # Both block numbers should be present

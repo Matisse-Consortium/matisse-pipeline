@@ -222,7 +222,7 @@ def show_calibration_status(listRedBlocks, console, detailed_block: int | None =
     _report_console.print(detail_table, justify="center")
 
 
-def show_blocs_status(listCmdEsorex, iterNumber, listRedBlocks, check_blocks):
+def show_blocs_status(listCmdEsorex, listRedBlocks, check_blocks):
     """Print table containing the different block informations."""
 
     if listCmdEsorex == []:
@@ -238,7 +238,8 @@ def show_blocs_status(listCmdEsorex, iterNumber, listRedBlocks, check_blocks):
         table.add_column("TPL Start", style="cyan", no_wrap=True)
         table.add_column("Target", style="yellow")
         table.add_column("Tag", style="white")
-        table.add_column("Detector", style="magenta")
+        table.add_column("Band", style="magenta")
+        table.add_column("Resol", style="white")
         table.add_column("Action", style="green")
         table.add_column("Status", justify="center", style="bold")
         table.add_column("Message", style="dim")
@@ -247,20 +248,26 @@ def show_blocs_status(listCmdEsorex, iterNumber, listRedBlocks, check_blocks):
 
         # Attach original block number before sorting
         indexed_blocks = [(i + 1, elt) for i, elt in enumerate(listRedBlocks)]
-        indexed_blocks.sort(
-            key=lambda pair: (
-                pair[1].get("action", ""),
-                get_detector_name(pair[1]),
-                get_target_name(pair[1]),
-            ),
-        )
-
         for block_num, elt in indexed_blocks:
             tplstart = elt.get("tplstart", "N/A")
+            tplstart = tplstart.split(".")[0]
             tag = elt["input"][0][1]
             detector = get_detector_name(elt)
+            if detector == "AQUARIUS":
+                band = "N"
+            else:
+                band = "LM"
+
             action = elt.get("action", "N/A")
+            action = action.replace("ACTION_", "")
             status = elt.get("status", 0)
+            hdr = elt["input"][0][2] if elt["input"] else {}
+            if detector == "AQUARIUS":
+                resol = hdr.get("HIERARCH ESO INS DIN NAME", "N/A") if hdr else "N/A"
+            elif detector == "HAWAII-2RG":
+                resol = hdr.get("HIERARCH ESO INS DIL NAME", "N/A") if hdr else "N/A"
+            else:
+                resol = "N/A"
             # iteration = elt.get("iter", "?")
             target = get_target_name(elt)
 
@@ -272,7 +279,8 @@ def show_blocs_status(listCmdEsorex, iterNumber, listRedBlocks, check_blocks):
                     tplstart,
                     target,
                     tag,
-                    detector,
+                    band,
+                    resol,
                     action,
                     "✅ [green]OK[/]",
                     msg,
@@ -285,7 +293,8 @@ def show_blocs_status(listCmdEsorex, iterNumber, listRedBlocks, check_blocks):
                     tplstart,
                     target,
                     tag,
-                    detector,
+                    band,
+                    resol,
                     action,
                     "[cyan]SKIP[/]",
                     msg,
@@ -299,7 +308,8 @@ def show_blocs_status(listCmdEsorex, iterNumber, listRedBlocks, check_blocks):
                         tplstart,
                         target,
                         tag,
-                        detector,
+                        band,
+                        resol,
                         action,
                         "❌ [red]FAIL[/]",
                         msg,
@@ -315,7 +325,8 @@ def show_blocs_status(listCmdEsorex, iterNumber, listRedBlocks, check_blocks):
                         tplstart,
                         target,
                         tag,
-                        detector,
+                        band,
+                        resol,
                         action,
                         "⚠ [yellow]SKIP[/]",
                         msg,
@@ -341,6 +352,43 @@ def show_blocs_status(listCmdEsorex, iterNumber, listRedBlocks, check_blocks):
         # Break logic (to be called inside a loop)
         return True  # signal to break the loop
     return False
+
+
+def show_files_inventory(list_raw, allhdr, console):
+    """Print table containing the different files informations."""
+    table = Table(
+        title="\n- MATISSE inventory -",
+        show_header=True,
+        header_style="bold magenta",
+        title_style="bold cyan",
+        expand=True,
+    )
+
+    table.add_column("#", style="bold white", no_wrap=True, justify="right")
+    table.add_column("File", style="cyan")
+    table.add_column("Status", justify="center", style="bold")
+    table.add_column("Message", style="dim")
+
+    # Example data, replace with actual file status
+    files = [
+        ("reduced/data1.oifits", "OK"),
+        ("reduced/data2.oifits", "SKIP"),
+        ("reduced/data3.oifits", "FAIL"),
+    ]
+
+    for i, (filename, status) in enumerate(files, start=1):
+        if status == "OK":
+            msg = "File processed successfully"
+            table.add_row(str(i), filename, "✅ [green]OK[/]", msg)
+        elif status == "SKIP":
+            msg = "File skipped due to missing calibration"
+            table.add_row(str(i), filename, "[yellow]SKIP[/]", msg)
+        else:
+            msg = "File failed to process"
+            table.add_row(str(i), filename, "❌ [red]FAIL[/]", msg)
+
+    console.print(table)
+    _report_console.print(table)
 
 
 def save_report(output_dir: str | Path) -> Path | None:
