@@ -238,7 +238,8 @@ def show_blocs_status(listCmdEsorex, iterNumber, listRedBlocks, check_blocks):
         table.add_column("TPL Start", style="cyan", no_wrap=True)
         table.add_column("Target", style="yellow")
         table.add_column("Tag", style="white")
-        table.add_column("Detector", style="magenta")
+        table.add_column("Band", style="magenta")
+        table.add_column("Resol", style="white")
         table.add_column("Action", style="green")
         table.add_column("Status", justify="center", style="bold")
         table.add_column("Message", style="dim")
@@ -247,20 +248,26 @@ def show_blocs_status(listCmdEsorex, iterNumber, listRedBlocks, check_blocks):
 
         # Attach original block number before sorting
         indexed_blocks = [(i + 1, elt) for i, elt in enumerate(listRedBlocks)]
-        indexed_blocks.sort(
-            key=lambda pair: (
-                pair[1].get("action", ""),
-                get_detector_name(pair[1]),
-                get_target_name(pair[1]),
-            ),
-        )
-
         for block_num, elt in indexed_blocks:
             tplstart = elt.get("tplstart", "N/A")
+            tplstart = tplstart.split(".")[0]
             tag = elt["input"][0][1]
             detector = get_detector_name(elt)
+            if detector == "AQUARIUS":
+                band = "N"
+            else:
+                band = "LM"
+
             action = elt.get("action", "N/A")
+            action = action.replace("ACTION_", "")
             status = elt.get("status", 0)
+            hdr = elt["input"][0][2] if elt["input"] else {}
+            if detector == "AQUARIUS":
+                resol = hdr.get("HIERARCH ESO INS DIN NAME", "N/A") if hdr else "N/A"
+            elif detector == "HAWAII-2RG":
+                resol = hdr.get("HIERARCH ESO INS DIL NAME", "N/A") if hdr else "N/A"
+            else:
+                resol = "N/A"
             # iteration = elt.get("iter", "?")
             target = get_target_name(elt)
 
@@ -272,7 +279,8 @@ def show_blocs_status(listCmdEsorex, iterNumber, listRedBlocks, check_blocks):
                     tplstart,
                     target,
                     tag,
-                    detector,
+                    band,
+                    resol,
                     action,
                     "✅ [green]OK[/]",
                     msg,
@@ -285,7 +293,8 @@ def show_blocs_status(listCmdEsorex, iterNumber, listRedBlocks, check_blocks):
                     tplstart,
                     target,
                     tag,
-                    detector,
+                    band,
+                    resol,
                     action,
                     "[cyan]SKIP[/]",
                     msg,
@@ -299,7 +308,8 @@ def show_blocs_status(listCmdEsorex, iterNumber, listRedBlocks, check_blocks):
                         tplstart,
                         target,
                         tag,
-                        detector,
+                        band,
+                        resol,
                         action,
                         "❌ [red]FAIL[/]",
                         msg,
@@ -315,7 +325,8 @@ def show_blocs_status(listCmdEsorex, iterNumber, listRedBlocks, check_blocks):
                         tplstart,
                         target,
                         tag,
-                        detector,
+                        band,
+                        resol,
                         action,
                         "⚠ [yellow]SKIP[/]",
                         msg,
