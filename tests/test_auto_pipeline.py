@@ -78,7 +78,7 @@ def test_run_esorex_invokes_esorex_command(monkeypatch, tmp_path):
 
     workdir = tmp_path / "workdir"
     workdir.mkdir()
-    job_path = tmp_path / "mat_job"
+    job_path = tmp_path / "esorex"
 
     base_cmd = f"esorex --working-dir={workdir} {job_path}"
     original_cmd = f"{base_cmd} % simulated progress output"
@@ -90,7 +90,7 @@ def test_run_esorex_invokes_esorex_command(monkeypatch, tmp_path):
         block_index,
         True,
         "mat_test_recipe",
-        str(workdir / (str(job_path) + ".err")),
+        str(workdir / "esorex.log"),
     )
 
     assert captured["args"] == ["esorex", f"--working-dir={workdir}", str(job_path)]
