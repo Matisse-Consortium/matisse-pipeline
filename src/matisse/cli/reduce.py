@@ -174,9 +174,8 @@ def reduce(
             inventory=check_files,
         )
 
-        tidyup_path(Path(dir_result) / "reduced")
-
-        if not check_blocks and not check_calib:
+        if not check_blocks and not check_calib and not check_files:
+            tidyup_path(Path(dir_result) / "reduced")
             log.info(
                 "[green][SUCCESS] Results saved to reduced/ (intermediate) and reduced_OIFITS/ (oifits)"
             )

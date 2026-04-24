@@ -41,9 +41,11 @@ from matisse.core.lib_auto_pipeline import (
 from matisse.core.utils.common import remove_double_parameter
 from matisse.core.utils.io_utils import resolve_raw_input
 from matisse.core.utils.log_utils import (
+    compact_missing_summary,
     console,
     iteration_banner,
     log,
+    parse_esorex_missing_files,
     save_report,
     section,
     show_blocs_status,
@@ -61,6 +63,7 @@ class RedBlock(TypedDict):
     status: int
     tplstart: str
     iter: int
+    error_msg: str
 
 
 def run_esorex(args):
@@ -129,8 +132,8 @@ def run_esorex(args):
         )
     ret = result.returncode
 
-    err_path = str(Path(workdir) / err)
-    return block_index, ret == 0, recipe, err_path
+    esorex_log_path = str(Path(workdir) / "esorex.log")
+    return block_index, ret == 0, recipe, esorex_log_path
 
 
 def run_pipeline(
@@ -168,6 +171,10 @@ def run_pipeline(
         )
     else:
         log.debug("Using current recipe parameter: spectralAverage.")
+
+    if inventory:
+        show_files_inventory(dirRaw)
+        return 0  # Exit after showing inventory if requested
 
     # --- Setup Vizier to collect MATISSE magnitudes ---
     vizier_cat_mdfc = Vizier(
@@ -221,10 +228,6 @@ def run_pipeline(
 
     # Keep a reference to all headers before filtering for skip reporting
     allhdr_all = list(allhdr)
-
-    if inventory:
-        show_files_inventory(list_raw, allhdr, console)
-        return 0  # Exit after showing inventory if requested
 
     listRawSorted = []
     allhdrSorted = []
@@ -381,6 +384,11 @@ def run_pipeline(
 
     MAX_SAFETY_ITER = 10  # Safety cap to prevent infinite loops
 
+    # Track blocks that failed esorex execution across iterations so their
+    # status is not reset when list_red_blocks is re-initialized each loop.
+    failed_tplstarts: set[str] = set()
+    failed_messages: dict[str, str] = {}
+
     iterNumber = 0
     while True:
         iterNumber += 1
@@ -421,6 +429,8 @@ def run_pipeline(
             }
             for _, iter_num in zip(keyTplStart, listIterNumber, strict=True)
         ]
+        for rb in list_red_blocks:
+            rb["error_msg"] = ""
 
         # Fill the list of raw data in the Reduction Blocks List
         log.debug("Listing files in the reduction blocks...")
@@ -798,7 +808,7 @@ def run_pipeline(
                             block_index,
                             success,
                             recipe,
-                            err_path,
+                            esorex_log,
                         ) in pool.imap_unordered(run_esorex, tasks):
                             results.append((block_index, success))
                             if success:
@@ -808,15 +818,33 @@ def run_pipeline(
                             else:
                                 progress.console.print(
                                     f"  [red]❌ Block #{block_index}[/] {recipe} "
-                                    f"— see {Path(err_path).name}"
+                                    f"— see {Path(esorex_log).name}"
                                 )
-                                failed.append((block_index, recipe, err_path))
+                                failed.append((block_index, recipe, esorex_log))
                             progress.advance(ptask)
 
                 if failed:
                     console.print(f"\n[bold red]{len(failed)} block(s) failed:[/]")
-                    for block_index, recipe, err_path in failed:
-                        console.print(f"  Block #{block_index} ({recipe}): {err_path}")
+                    for block_index, recipe, esorex_log in failed:
+                        missing_lines = parse_esorex_missing_files(esorex_log)
+                        msg = compact_missing_summary(missing_lines)
+                        # Mark block as execution-failed (status -1) and persist
+                        # its tplstart and error message across iterations.
+                        block = list_red_blocks[block_index - 1]
+                        block["status"] = -1
+                        block["error_msg"] = msg
+                        tplstart_key = block["tplstart"]
+                        failed_tplstarts.add(tplstart_key)
+                        failed_messages[tplstart_key] = msg
+                        console.print(
+                            f"  Block #{block_index} ({recipe}): {esorex_log}"
+                        )
+                        if missing_lines:
+                            console.print(
+                                "    [yellow]Missing inputs detected in esorex log:[/]"
+                            )
+                            for line in missing_lines[:10]:
+                                console.print(f"      [dim]{line}[/dim]")
 
         # Add MDFC Fluxes to CALIB_RAW_INT and TARGET_RAW_INT
         base_path = Path(repIter)
@@ -826,6 +854,13 @@ def run_pipeline(
             if p.name.endswith((".fits", ".fits.gz"))
         ]
         add_mdfc_fluxes(list_oifits_files, vizier_cat_mdfc)
+
+        # Re-apply execution-failure status and error message for blocks that
+        # failed in a previous iteration (matisse_calib resets status to 1).
+        for block in list_red_blocks:
+            if block["tplstart"] in failed_tplstarts:
+                block["status"] = -1
+                block["error_msg"] = failed_messages.get(block["tplstart"], "")
 
         if show_blocs_status(listCmdEsorex, list_red_blocks, check_blocks):
             break
