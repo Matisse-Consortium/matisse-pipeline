@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.6.0 (2026-04-24)
+
+### Feat
+
+- add clearer message error (message with missing calibration)
+- add proper inventory table (`matisse reduce --check-files`)
+- change parameter name --spectralBinning to --spectralAverage (with backward compatibility).
+- add resol and band into in blocs_status. Change default value of band as `ALL` to reduce all available resolution (previously `LOW`)
+- add default master calibration for magic numbers
+- add sub-band option to compute metrics over L/M/N band only (for bcd)
+- perform matisse format at the end of reduce (instead of separated command). By default, `matisse reduce` produces `reduced/` and `reduced_OIFITS/`.
+
+### Fix
+
+- update change about parameters on tests and flux
+- timespan in hours for calibrator selection
+- update help with the new reduced output
+
+### Refactor
+
+- remove prefix and change default compute directory
+- add doc to calibrate (--cumul-block expert only)
+- polish log of calibrate
+- centralize outputs into single directory and drop max iter concept
+
 ## v0.5.0 (2026-03-24)
 
 ### Feat
