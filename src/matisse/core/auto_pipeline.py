@@ -426,11 +426,10 @@ def run_pipeline(
                 "status": 0,
                 "tplstart": " ",
                 "iter": iter_num + 1,
+                "error_msg": "",
             }
             for _, iter_num in zip(keyTplStart, listIterNumber, strict=True)
         ]
-        for rb in list_red_blocks:
-            rb["error_msg"] = ""
 
         # Fill the list of raw data in the Reduction Blocks List
         log.debug("Listing files in the reduction blocks...")
