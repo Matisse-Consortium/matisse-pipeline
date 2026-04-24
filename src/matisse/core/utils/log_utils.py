@@ -300,6 +300,20 @@ def show_blocs_status(listCmdEsorex, listRedBlocks, check_blocks):
                     msg,
                 )
                 n_skip += 1
+            elif status == -1:
+                error_msg = elt.get("error_msg", "") or "Esorex execution failed"
+                table.add_row(
+                    str(block_num),
+                    tplstart,
+                    target,
+                    tag,
+                    band,
+                    resol,
+                    action,
+                    "❌ [red]FAIL[/]",
+                    error_msg,
+                )
+                n_fail += 1
             else:
                 if elt["action"] == "NO-ACTION":
                     msg = "Data not taken into account by the Pipeline"
@@ -354,10 +368,28 @@ def show_blocs_status(listCmdEsorex, listRedBlocks, check_blocks):
     return False
 
 
-def show_files_inventory(list_raw, allhdr, console):
-    """Print table containing the different files informations."""
+def show_files_inventory(dirRaw):
+    """Print a dfits-like inventory table of raw FITS files.
+
+    Mirrors the output of:
+      dfits *.fits | fitsort obs.targ.name tpl.start det.chip.name \\
+          dpr.type ins.bcd1.name ins.bcd2.name iss.chop.st pro.catg
+    """
+    _HDR = {
+        "TARGET": "HIERARCH ESO OBS TARG NAME",
+        "TPL START": "HIERARCH ESO TPL START",
+        "CHIP": "HIERARCH ESO DET CHIP NAME",
+        "DPR TYPE": "HIERARCH ESO DPR TYPE",
+        "BCD1": "HIERARCH ESO INS BCD1 NAME",
+        "BCD2": "HIERARCH ESO INS BCD2 NAME",
+        "CHOP": "HIERARCH ESO ISS CHOP ST",
+        "PRO CATG": "HIERARCH ESO PRO CATG",
+    }
+
+    from astropy.io import fits
+
     table = Table(
-        title="\n- MATISSE inventory -",
+        title="\n- MATISSE files inventory -",
         show_header=True,
         header_style="bold magenta",
         title_style="bold cyan",
@@ -365,30 +397,35 @@ def show_files_inventory(list_raw, allhdr, console):
     )
 
     table.add_column("#", style="bold white", no_wrap=True, justify="right")
-    table.add_column("File", style="cyan")
-    table.add_column("Status", justify="center", style="bold")
-    table.add_column("Message", style="dim")
+    table.add_column("File", style="cyan", no_wrap=True)
+    for col in _HDR:
+        table.add_column(col, style="white")
 
-    # Example data, replace with actual file status
-    files = [
-        ("reduced/data1.oifits", "OK"),
-        ("reduced/data2.oifits", "SKIP"),
-        ("reduced/data3.oifits", "FAIL"),
-    ]
+    list_files = sorted(Path(dirRaw).glob("*.fits"))
 
-    for i, (filename, status) in enumerate(files, start=1):
-        if status == "OK":
-            msg = "File processed successfully"
-            table.add_row(str(i), filename, "✅ [green]OK[/]", msg)
-        elif status == "SKIP":
-            msg = "File skipped due to missing calibration"
-            table.add_row(str(i), filename, "[yellow]SKIP[/]", msg)
+    for i, filepath in enumerate(list_files):
+        hdr = fits.open(filepath)[0].header
+        chip = hdr.get(_HDR["CHIP"], "")
+        dpr_type = hdr.get(_HDR["DPR TYPE"], "")
+        if "AQUARIUS" in chip:
+            if dpr_type in ("STD", "OBJECT", "STD,RMNREC", "OBJECT,RMNREC"):
+                row_style = "yellow"
+            else:
+                row_style = "dim yellow"
+        elif "HAWAII" in chip:
+            if dpr_type in ("STD", "OBJECT", "STD,RMNREC", "OBJECT,RMNREC"):
+                row_style = ""
+            else:
+                row_style = "dim"
         else:
-            msg = "File failed to process"
-            table.add_row(str(i), filename, "❌ [red]FAIL[/]", msg)
+            row_style = "dim cyan"
+
+        values = [hdr.get(key, "–") for key in _HDR.values()]
+        table.add_row(str(i), Path(filepath).name, *values, style=row_style)
 
     console.print(table)
     _report_console.print(table)
+    return table
 
 
 def save_report(output_dir: str | Path) -> Path | None:
@@ -408,3 +445,53 @@ def save_report(output_dir: str | Path) -> Path | None:
     output_path.write_text(svg_text, encoding="utf-8")
     log.info(f"Pipeline report saved to [magenta]{output_path}[/magenta]")
     return output_path
+
+
+def parse_esorex_missing_files(log_path: str) -> list[str]:
+    """
+    Parse an esorex log file and extract lines mentioning missing files or inputs.
+
+    Returns a deduplicated list of relevant excerpts for user reporting.
+    """
+    missing: list[str] = []
+    seen: set[str] = set()
+    try:
+        with open(log_path, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                if "missing" in line.lower():
+                    stripped = line.strip()
+                    if stripped and stripped not in seen:
+                        missing.append(stripped)
+                        seen.add(stripped)
+    except (FileNotFoundError, OSError):
+        pass
+    return missing
+
+
+def compact_missing_summary(lines: list[str]) -> str:
+    """
+    Build a compact 'Missing: dark file, badpix map' string from esorex log lines.
+
+    Extracts the phrase immediately following the word "missing" (case-insensitive)
+    from each line, e.g. "missing dark file" → "dark file".
+    Falls back to a truncated first line if no such pattern is found.
+    """
+    import re
+
+    types: list[str] = []
+    seen: set[str] = set()
+    for line in lines:
+        # Capture 1-3 words after "missing", ignoring leading punctuation/spaces
+        m = re.search(r"\bmissing\s+([^\n:,;]{1,40})", line, re.IGNORECASE)
+        if m:
+            phrase = m.group(1).strip().rstrip(".")
+            if phrase and phrase.lower() not in seen:
+                types.append(phrase)
+                seen.add(phrase.lower())
+    if types:
+        summary = ", ".join(types[:6])
+        return f"Missing: {summary}" + (" …" if len(types) > 6 else "")
+    if lines:
+        first = lines[0]
+        return first[:70] + ("…" if len(first) > 70 else "")
+    return "Esorex execution failed"

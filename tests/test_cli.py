@@ -989,3 +989,30 @@ def test_flux_calibrate_run_failure_is_reported(monkeypatch, tmp_path):
     assert result.exit_code == 1
     assert "Flux calibration failed" in output
     assert "simulated calibration crash" in output
+
+
+def test_reduce_inventory(bcd_dir):
+    """Test that --check-files calls show_files_inventory with the correct dir."""
+    from matisse.core.utils.log_utils import show_files_inventory
+
+    result = runner.invoke(
+        app,
+        [
+            "reduce",
+            "--data-dir",
+            str(bcd_dir),
+            "--check-files",
+        ],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 0, f"Command failed:\n{result.output}"
+
+    # Verify the inventory function returns a table with 4 rows (one per FITS file)
+    n_fits = len(list(bcd_dir.glob("*.fits")))
+    assert n_fits == 4, f"Expected 4 FITS files in bcd_dir, found {n_fits}"
+
+    table = show_files_inventory(str(bcd_dir))
+    assert table.row_count == n_fits, (
+        f"Expected {n_fits} rows in inventory table, got {table.row_count}"
+    )
