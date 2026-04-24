@@ -2,6 +2,34 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.6.0 (2026-04-24)
+
+### Feat
+
+- add clearer message error and update inventory
+- add proper inventory table and fix show_block_status issue
+- change parameter name (with backward compatibility).
+- add resol and band into in blocs_status
+- change default value to ALL
+- add default master calibration and update visualition option
+- add sub-band option to compute metrics over L/M/N band only
+- perform matisse format at the end of reduce
+
+### Fix
+
+- update change about paramters on tests and flux
+- timespan in hours for calibrator selection
+- update help with the new reduced output
+
+### Refactor
+
+- remove prefix and change default compute directory
+- clean log
+- add doc to calibrate (--cumul-block expert only)
+- polish log of calibrate
+- change for progress rich and clearer output
+- centralize outputs into single directory and drop max iter concept
+
 ## v0.5.0 (2026-03-24)
 
 ### Feat
