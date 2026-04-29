@@ -378,7 +378,8 @@ def show_files_inventory(dirRaw):
     _HDR = {
         "TARGET": "HIERARCH ESO OBS TARG NAME",
         "TPL START": "HIERARCH ESO TPL START",
-        "CHIP": "HIERARCH ESO DET CHIP NAME",
+        # CHIP column replaced by BAND below
+        "BAND": "HIERARCH ESO DET CHIP NAME",  # We'll map this to LM/N
         "DPR TYPE": "HIERARCH ESO DPR TYPE",
         "BCD1": "HIERARCH ESO INS BCD1 NAME",
         "BCD2": "HIERARCH ESO INS BCD2 NAME",
@@ -397,7 +398,7 @@ def show_files_inventory(dirRaw):
     )
 
     table.add_column("#", style="bold white", no_wrap=True, justify="right")
-    table.add_column("File", style="cyan", no_wrap=True)
+    table.add_column("File", no_wrap=True)
     for col in _HDR:
         table.add_column(col, style="white")
 
@@ -405,22 +406,43 @@ def show_files_inventory(dirRaw):
 
     for i, filepath in enumerate(list_files):
         hdr = fits.open(filepath)[0].header
-        chip = hdr.get(_HDR["CHIP"], "")
+        chip = hdr.get("HIERARCH ESO DET CHIP NAME", "")
         dpr_type = hdr.get(_HDR["DPR TYPE"], "")
+        pro_catg = hdr.get(_HDR["PRO CATG"], "")
+        # Map chip to band
         if "AQUARIUS" in chip:
-            if dpr_type in ("STD", "OBJECT", "STD,RMNREC", "OBJECT,RMNREC"):
+            band = "N"
+            if dpr_type in (
+                "STD",
+                "OBJECT",
+                "STD,RMNREC",
+                "OBJECT,RMNREC",
+            ) or pro_catg in ("TARGET_RAW_INT", "CALIB_RAW_INT"):
                 row_style = "yellow"
             else:
                 row_style = "dim yellow"
         elif "HAWAII" in chip:
-            if dpr_type in ("STD", "OBJECT", "STD,RMNREC", "OBJECT,RMNREC"):
+            band = "LM"
+            if dpr_type in (
+                "STD",
+                "OBJECT",
+                "STD,RMNREC",
+                "OBJECT,RMNREC",
+            ) or pro_catg in ("TARGET_RAW_INT", "CALIB_RAW_INT"):
                 row_style = ""
             else:
                 row_style = "dim"
         else:
+            band = "–"
             row_style = "dim cyan"
 
-        values = [hdr.get(key, "–") for key in _HDR.values()]
+        # Compose values, replacing CHIP with BAND
+        values = []
+        for key in _HDR:
+            if key == "BAND":
+                values.append(band)
+            else:
+                values.append(hdr.get(_HDR[key], "–"))
         table.add_row(str(i), Path(filepath).name, *values, style=row_style)
 
     console.print(table)
