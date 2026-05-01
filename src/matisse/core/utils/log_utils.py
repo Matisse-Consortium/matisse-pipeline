@@ -402,10 +402,18 @@ def show_files_inventory(dirRaw):
     for col in _HDR:
         table.add_column(col, style="white")
 
-    list_files = sorted(Path(dirRaw).glob("*.fits"))
+    list_files = sorted(
+        p for p in Path(dirRaw).glob("*.fits") if not p.name.startswith("._")
+    )
+    skipped_invalid = 0
 
     for i, filepath in enumerate(list_files):
-        hdr = fits.open(filepath)[0].header
+        try:
+            hdr = fits.getheader(filepath, 0)
+        except Exception as err:
+            skipped_invalid += 1
+            log.warning(f"Skipping invalid FITS file in inventory: {filepath} ({err})")
+            continue
         chip = hdr.get("HIERARCH ESO DET CHIP NAME", "")
         dpr_type = hdr.get(_HDR["DPR TYPE"], "")
         pro_catg = hdr.get(_HDR["PRO CATG"], "")
@@ -447,6 +455,13 @@ def show_files_inventory(dirRaw):
 
     console.print(table)
     _report_console.print(table)
+    if skipped_invalid:
+        console.print(
+            f"[yellow]Skipped {skipped_invalid} invalid FITS file(s) in inventory.[/]"
+        )
+        _report_console.print(
+            f"Skipped {skipped_invalid} invalid FITS file(s) in inventory."
+        )
     return table
 
 

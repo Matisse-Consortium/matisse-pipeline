@@ -2,6 +2,7 @@ import re
 import subprocess
 
 import pytest
+from astropy.io import fits
 from typer.testing import CliRunner
 
 from matisse.cli import format_results as format_module, show as show_module
@@ -1016,3 +1017,16 @@ def test_reduce_inventory(bcd_dir):
     assert table.row_count == n_fits, (
         f"Expected {n_fits} rows in inventory table, got {table.row_count}"
     )
+
+
+def test_show_files_inventory_ignores_appledouble_sidecar(tmp_path):
+    from matisse.core.utils.log_utils import show_files_inventory
+
+    valid = tmp_path / "MATIS_valid.fits"
+    sidecar = tmp_path / "._MATIS_valid.fits"
+
+    fits.PrimaryHDU().writeto(valid)
+    sidecar.write_text("not a fits file")
+
+    table = show_files_inventory(str(tmp_path))
+    assert table.row_count == 1
