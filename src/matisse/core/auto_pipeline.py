@@ -818,8 +818,11 @@ def run_pipeline(
                         ) in pool.imap_unordered(run_esorex, tasks):
                             results.append((block_index, success))
                             if success:
+                                from datetime import datetime
+
                                 progress.console.print(
-                                    f"  [green]✅ Block #{block_index}[/] {recipe}"
+                                    f"  [green]✅ Block #{block_index}[/] {recipe} "
+                                    f"[dim]({datetime.now().strftime('%H:%M:%S')})[/dim]"
                                 )
                             else:
                                 progress.console.print(
