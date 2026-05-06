@@ -414,6 +414,7 @@ def run_pipeline(
                         for f in os.listdir(elt)
                         if os.path.isfile(os.path.join(elt, f))
                         and (f.endswith(".fits") or f.endswith(".fits.gz"))
+                        and not f.startswith("._")
                     ]
 
         _iter_log("Listing reduction blocks...")

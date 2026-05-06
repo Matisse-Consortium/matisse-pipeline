@@ -1585,6 +1585,8 @@ def find_siblings_all_bands(file_path: Path | str) -> dict[str, dict[str, Path]]
 
     candidates: dict[str, list[tuple[str, str, Path]]] = {}
     for fits_file in sorted(parent.glob("*.fits")):
+        if fits_file.name.startswith("._"):
+            continue
         try:
             hdr = astrofits.getheader(fits_file, 0)
             file_tpl = hdr.get("HIERARCH ESO TPL START")
