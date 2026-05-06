@@ -580,6 +580,10 @@ def run_pipeline(
 
         repIter = os.path.join(dirResult, "reduced")
         if not check_blocks:
+            # Ensure parent dirResult exists first
+            if not os.path.isdir(dirResult):
+                os.makedirs(dirResult, exist_ok=True)
+
             if os.path.isdir(repIter):
                 if overwrite == 1:
                     shutil.rmtree(repIter)
