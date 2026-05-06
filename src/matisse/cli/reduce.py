@@ -31,6 +31,39 @@ class Resolution(str, Enum):
     ALL = "ALL"
 
 
+class FilterMode(str, Enum):
+    VF = "vf"
+    PF = "pf"
+    JP = "jp"
+
+
+def _validate_filter_mode(value: str) -> str:
+    """Validate and normalize a comma-separated list of filter modes."""
+    normalized = value.strip().lower()
+    if normalized == "none":
+        return "none"
+
+    allowed_values = {mode.value for mode in FilterMode}
+    parsed_values = [part.strip().lower() for part in value.split(",") if part.strip()]
+
+    if not parsed_values:
+        raise typer.BadParameter(
+            "Expected a comma-separated list using vf, pf, jp, or 'none'."
+        )
+
+    invalid_values = [part for part in parsed_values if part not in allowed_values]
+    if invalid_values:
+        allowed = ", ".join(mode.value for mode in FilterMode)
+        invalid = ", ".join(invalid_values)
+        raise typer.BadParameter(
+            f"Invalid filter mode(s): {invalid}. Allowed values: {allowed}, or 'none'."
+        )
+
+    # Deduplicate while preserving user order.
+    unique_values = list(dict.fromkeys(parsed_values))
+    return ",".join(unique_values)
+
+
 def reduce(
     datadir: Path = typer.Option(
         Path.cwd(),
@@ -66,6 +99,22 @@ def reduce(
     ),
     spectral_average: str = typer.Option(
         "", "--spectral-average", help="Spectral average to improve SNR."
+    ),
+    vfactor_mode: bool = typer.Option(
+        True,
+        "--vfactor/--no-vfactor",
+        help="Enable vfactor correction for VIS2 (L/M band only, recipe 2.0.1+).",
+    ),
+    pfactor_mode: bool = typer.Option(
+        True,
+        "--pfactor/--no-pfactor",
+        help="Enable pfactor correction for VIS2 (L/M band only, recipe 2.0.1+).",
+    ),
+    filter_mode: str = typer.Option(
+        "vf,pf,jp",
+        "--filter-mode",
+        callback=lambda value: _validate_filter_mode(value),
+        help="Filter modes: vf (vfactor), pf (pfactor), jp (fringe jump), or none (recipe 2.0.1+ only).",
     ),
     custom_recipes_dir: Path | None = typer.Option(
         None,
@@ -172,6 +221,9 @@ def reduce(
             custom_recipes_dir=custom_recipes_dir,
             save_report_svg=save_report,
             inventory=check_files,
+            vfactor_mode=vfactor_mode,
+            pfactor_mode=pfactor_mode,
+            filter_mode=filter_mode,
         )
 
         if not check_blocks and not check_calib and not check_files:

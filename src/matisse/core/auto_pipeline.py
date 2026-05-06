@@ -38,6 +38,7 @@ from matisse.core.lib_auto_pipeline import (
     matisse_type,
     probe_spectral_param_name,
 )
+from matisse.core.recipe_compat import build_raw_estimates_params
 from matisse.core.utils.common import remove_double_parameter
 from matisse.core.utils.io_utils import _is_ignored_fits_sidecar, resolve_raw_input
 from matisse.core.utils.log_utils import (
@@ -156,6 +157,9 @@ def run_pipeline(
     custom_recipes_dir: Path | None = None,
     save_report_svg: bool = False,
     inventory: bool = False,
+    vfactor_mode: bool = True,
+    pfactor_mode: bool = True,
+    filter_mode: str = "vf,pf,jp",
 ):
     """Main function to run MATISSE automatic pipeline."""
 
@@ -171,6 +175,14 @@ def run_pipeline(
         )
     else:
         log.debug("Using current recipe parameter: spectralAverage.")
+
+    # --- Build filt   ering parameters for mat_raw_estimates based on recipe version ---
+    filter_params = build_raw_estimates_params(
+        recipe_dir=custom_recipes_dir,
+        vfactor_mode=vfactor_mode,
+        pfactor_mode=pfactor_mode,
+        filter_mode=filter_mode,
+    )
 
     if inventory:
         show_files_inventory(dirRaw)
@@ -497,6 +509,11 @@ def run_pipeline(
                         red_block["param"] = param
                     else:
                         red_block["param"] = paramL + " " + param
+
+                # Append filtering parameters (vfactor, pfactor, filter)
+                # Only for L/M band since these are L/M-specific in the recipe
+                if hdr["HIERARCH ESO DET CHIP NAME"] == "HAWAII-2RG" and filter_params:
+                    red_block["param"] += " " + filter_params
             else:
                 red_block["param"] = param
             red_block["tplstart"] = keyTplStartCurrent
