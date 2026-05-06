@@ -37,6 +37,14 @@ class FilterMode(str, Enum):
     JP = "jp"
 
 
+PANEL_IO = "Input / Output"
+PANEL_CORE = "Core Reduction"
+PANEL_SELECTION = "Selection"
+PANEL_RECIPE_ADVANCED = "Recipe Advanced (rarely changed)"
+PANEL_CHECKS = "Checks / Diagnostics"
+PANEL_LOGGING = "Logging / Reporting"
+
+
 def _validate_filter_mode(value: str) -> str:
     """Validate and normalize a comma-separated list of filter modes."""
     normalized = value.strip().lower()
@@ -69,91 +77,146 @@ def reduce(
         Path.cwd(),
         "--data-dir",
         "-d",
-        help="Directory containing raw MATISSE FITS files (default: current).",
+        help="Directory containing raw MATISSE FITS files.",
+        rich_help_panel=PANEL_IO,
     ),
     calibdir: Path | None = typer.Option(
         None,
         "--calib-dir",
         "-c",
         help="Calibration directory (default: same as raw).",
+        rich_help_panel=PANEL_IO,
     ),
     resultdir: Path | None = typer.Option(
         None,
         "--result-dir",
         "-r",
         help="Directory to store reduction results (default: current).",
+        rich_help_panel=PANEL_IO,
     ),
-    nbcore: int = typer.Option(1, "--nbcore", "-n", help="Number of CPU cores to use."),
+    nbcore: int = typer.Option(
+        1,
+        "--nbcore",
+        "-n",
+        help="Number of CPU cores to use.",
+        rich_help_panel=PANEL_IO,
+    ),
     overwrite: bool = typer.Option(
-        False, "--overwrite", help="Overwrite existing results."
+        False,
+        "--overwrite",
+        help="Overwrite existing results.",
+        rich_help_panel=PANEL_IO,
     ),
-    tplid: str = typer.Option("", "--tplid", help="Template ID to select."),
-    tplstart: str = typer.Option("", "--tplstart", help="Template start to select."),
-    skip_l: bool = typer.Option(False, "--skipL", help="Skip L band data."),
-    skip_n: bool = typer.Option(False, "--skipN", help="Skip N band data."),
     resol: Resolution = typer.Option(
         Resolution.ALL,
         "--resol",
         help="Spectral resolution.",
         show_default="ALL",
+        rich_help_panel=PANEL_CORE,
     ),
     spectral_average: str = typer.Option(
-        "", "--spectral-average", help="Spectral average to improve SNR."
+        "",
+        "--spectral-average",
+        help="Number of spectral channels to average to improve SNR (default: 7 for N band, 5 for L/M band).",
+        rich_help_panel=PANEL_RECIPE_ADVANCED,
     ),
     vfactor_mode: bool = typer.Option(
         True,
         "--vfactor/--no-vfactor",
         help="Enable vfactor correction for VIS2 (L/M band only, recipe 2.0.1+).",
+        rich_help_panel=PANEL_CORE,
     ),
     pfactor_mode: bool = typer.Option(
         True,
         "--pfactor/--no-pfactor",
         help="Enable pfactor correction for VIS2 (L/M band only, recipe 2.0.1+).",
+        rich_help_panel=PANEL_CORE,
     ),
     filter_mode: str = typer.Option(
         "vf,pf,jp",
         "--filter-mode",
         callback=lambda value: _validate_filter_mode(value),
         help="Filter modes: vf (vfactor), pf (pfactor), jp (fringe jump), or none (recipe 2.0.1+ only).",
+        rich_help_panel=PANEL_CORE,
+    ),
+    skip_l: bool = typer.Option(
+        False,
+        "--skipL",
+        help="Skip L band data.",
+        rich_help_panel=PANEL_CORE,
+    ),
+    skip_n: bool = typer.Option(
+        False,
+        "--skipN",
+        help="Skip N band data.",
+        rich_help_panel=PANEL_CORE,
+    ),
+    tplid: str = typer.Option(
+        "",
+        "--tplid",
+        help="Template ID to select.",
+        rich_help_panel=PANEL_RECIPE_ADVANCED,
+    ),
+    tplstart: str = typer.Option(
+        "",
+        "--tplstart",
+        help="Template start to select.",
+        rich_help_panel=PANEL_RECIPE_ADVANCED,
     ),
     custom_recipes_dir: Path | None = typer.Option(
         None,
         "--recipe-dir",
         help="Custom directory for MATISSE recipes (default: user esorex repository).",
+        rich_help_panel=PANEL_RECIPE_ADVANCED,
     ),
     param_n: str = typer.Option(
-        "/useOpdMod=TRUE", "--paramN", help="Recipe parameters for N band."
+        "/useOpdMod=TRUE",
+        "--paramN",
+        help="Recipe parameters for N band.",
+        rich_help_panel=PANEL_RECIPE_ADVANCED,
     ),
     param_l: str = typer.Option(
         "/tartyp=57/useOpdMod=FALSE",
         "--paramL",
         help="Recipe parameters for L/M band.",
+        rich_help_panel=PANEL_RECIPE_ADVANCED,
     ),
     check_blocks: bool = typer.Option(
         False,
         "--check-blocks",
         help="Check FITS files and the different pipeline blocks to be executed.",
+        rich_help_panel=PANEL_CHECKS,
     ),
     check_calib: bool = typer.Option(
         False,
         "--check-cal",
         help="Check if calibration files already processed.",
+        rich_help_panel=PANEL_CHECKS,
     ),
     check_files: bool = typer.Option(
         False,
         "--check-files",
         help="Check raw FITS files and their headers without running the pipeline.",
+        rich_help_panel=PANEL_CHECKS,
     ),
     detailed_block: int | None = typer.Option(
         None,
         "--block-cal",
         help="Show calibration filenames attached to the given reduction block number.",
+        rich_help_panel=PANEL_CHECKS,
     ),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose mode"),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable verbose mode",
+        rich_help_panel=PANEL_LOGGING,
+    ),
     save_report: bool = typer.Option(
         False,
         "--save-report",
         help="Save pipeline summary tables as an SVG report in the result directory.",
+        rich_help_panel=PANEL_LOGGING,
     ),
 ):
     """
