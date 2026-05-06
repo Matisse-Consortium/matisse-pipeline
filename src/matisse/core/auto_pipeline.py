@@ -39,7 +39,7 @@ from matisse.core.lib_auto_pipeline import (
     probe_spectral_param_name,
 )
 from matisse.core.utils.common import remove_double_parameter
-from matisse.core.utils.io_utils import resolve_raw_input
+from matisse.core.utils.io_utils import _is_ignored_fits_sidecar, resolve_raw_input
 from matisse.core.utils.log_utils import (
     compact_missing_summary,
     console,
@@ -195,8 +195,10 @@ def run_pipeline(
     if dirCalib:
         p = Path(dirCalib)
         if p.is_dir():
-            listArchive = [str(f) for f in p.rglob("*.fits")] + [
-                str(f) for f in p.rglob("*.fits.gz")
+            listArchive = [
+                str(f) for f in p.rglob("*.fits") if not _is_ignored_fits_sidecar(f)
+            ] + [
+                str(f) for f in p.rglob("*.fits.gz") if not _is_ignored_fits_sidecar(f)
             ]
             log.info(f"Calibration directory explicitly provided: {p}")
         else:

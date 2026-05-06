@@ -25,6 +25,11 @@ def _read_list_file(path: Path) -> list[str]:
     return lines
 
 
+def _is_ignored_fits_sidecar(path: Path) -> bool:
+    """Return True for macOS AppleDouble sidecar files like '._*.fits'."""
+    return path.name.startswith("._")
+
+
 def resolve_raw_input(raw_spec: str | Sequence[str]) -> tuple[list[Path], str]:
     """
     Normalize 'raw_spec' into a list of FITS file paths and detect the source type.
@@ -108,6 +113,7 @@ def resolve_raw_input(raw_spec: str | Sequence[str]) -> tuple[list[Path], str]:
         for p in paths
         if p.suffix.lower() == ".fits" or p.name.lower().endswith(".fits.gz")
     ]
+    fits = [p for p in fits if not _is_ignored_fits_sidecar(p)]
     if not fits:
         raise FileNotFoundError(
             "No FITS files found in the provided raw specification."

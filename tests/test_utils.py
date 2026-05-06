@@ -103,6 +103,18 @@ def test_resolve_raw_input_glob_pattern(tmp_path):
     assert source == "glob pattern"
 
 
+def test_resolve_raw_input_ignores_appledouble_sidecars(tmp_path):
+    valid = tmp_path / "valid.fits"
+    sidecar = tmp_path / "._valid.fits"
+    valid.touch()
+    sidecar.touch()
+
+    files, source = io_utils.resolve_raw_input(str(tmp_path / "*.fits"))
+
+    assert source == "glob pattern"
+    assert files == [valid]
+
+
 def test_check_for_calib_file_uses_matisse_type(monkeypatch, capsys):
     calls: list[str] = []
 
