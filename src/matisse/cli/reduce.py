@@ -28,7 +28,7 @@ class Resolution(str, Enum):
     LOW = "LOW"
     MED = "MED"
     HIGH = "HIGH"
-    ALL = ""
+    ALL = "ALL"
 
 
 def reduce(
@@ -62,6 +62,7 @@ def reduce(
         Resolution.ALL,
         "--resol",
         help="Spectral resolution.",
+        show_default="ALL",
     ),
     spectral_average: str = typer.Option(
         "", "--spectral-average", help="Spectral average to improve SNR."
@@ -118,8 +119,9 @@ def reduce(
     subdirectories within the specified result directory (current by default).
 
     We encourage users to run the pipeline using multiple cores (--nbcore) to speed up
-    processing time. The final results are stored in FITS files in the --result-dir
-    directory and can later be formatted into OIFITS files using the *format* command.
+    processing time. Intermediate products are stored in --result-dir/reduced and final
+    OIFITS files are stored in --result-dir/reduced_OIFITS. If the pipeline is re-run with the same result directory,
+    it will skip already processed files unless --overwrite is specified.
     """
     # --- 1. Verbosity and header ---
     section("MATISSE Reduction Pipeline")
@@ -140,9 +142,7 @@ def reduce(
     console.print(f"[cyan]Result directory:[/] {resultdir.resolve()}")
     _show_recipe_info(custom_recipes_dir)
     console.print(f"[magenta]CPU cores:[/] {nbcore}")
-    console.print(
-        f"[green]Resolution:[/] {resol.value if resol.value != '' else 'ALL'}"
-    )
+    console.print(f"[green]Resolution:[/] {resol.value}")
     console.print(f"[dim]Verbose:[/] {'ON' if not verbose else 'OFF'}")
 
     # --- 4. Resolve paths for core function ---
@@ -157,7 +157,7 @@ def reduce(
             dirResult=dir_result,
             dirCalib=dir_calib,
             nbCore=nbcore,
-            resol=resol,
+            resol="" if resol == Resolution.ALL else resol.value,
             paramL=param_l,
             paramN=param_n,
             overwrite=int(overwrite),
