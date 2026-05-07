@@ -155,7 +155,7 @@ def run_pipeline(
     skipN: bool = False,
     tplstartsel: str = "",
     tplidsel: str = "",
-    spectralAverage: str = "",
+    spectralAverage: int = -1,
     check_blocks: bool = False,
     check_calib: bool = False,
     detailed_block: int | None = None,
@@ -180,8 +180,6 @@ def run_pipeline(
         )
     else:
         log.debug("Using current recipe parameter: spectralAverage.")
-    if spectralAverage == -1:
-        spectralAverage = ""
 
     # --- Build filt   ering parameters for mat_raw_estimates based on recipe version ---
     filter_params = build_raw_estimates_params(
@@ -502,8 +500,8 @@ def run_pipeline(
 
             if action == "ACTION_MAT_RAW_ESTIMATES":
                 if hdr["HIERARCH ESO DET CHIP NAME"] == "AQUARIUS":
-                    if spectralAverage != "":
-                        paramN += f" --{spectral_param}=" + spectralAverage
+                    if spectralAverage != -1:
+                        paramN += f" --{spectral_param}=" + str(spectralAverage)
                     else:
                         paramN += f" --{spectral_param}=7"
 
@@ -512,8 +510,8 @@ def run_pipeline(
                     else:
                         red_block["param"] = paramN + " " + param
                 else:
-                    if spectralAverage != "":
-                        paramL += f" --{spectral_param}=" + spectralAverage
+                    if spectralAverage != -1:
+                        paramL += f" --{spectral_param}=" + str(spectralAverage)
                     else:
                         paramL += f" --{spectral_param}=5"
 
