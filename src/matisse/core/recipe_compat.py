@@ -105,6 +105,23 @@ def build_raw_estimates_params(
         params.append(f"--vfactor={'TRUE' if vfactor_mode else 'FALSE'}")
         params.append(f"--pfactor={'TRUE' if pfactor_mode else 'FALSE'}")
 
+        if vfactor_mode & pfactor_mode:
+            log.info(
+                "[bold cyan]vfactor[/bold cyan] and [bold cyan]pfactor[/bold cyan] used to correct VIS2 for L/M band."
+            )
+        elif vfactor_mode and not pfactor_mode:
+            log.info(
+                "[bold cyan]vfactor[/bold cyan] used to correct VIS2 for L/M band. [bold cyan]pfactor[/bold cyan] correction disabled."
+            )
+        elif pfactor_mode and not vfactor_mode:
+            log.info(
+                "[bold cyan]pfactor[/bold cyan] used to correct VIS2 for L/M band. [bold cyan]vfactor[/bold cyan] correction disabled."
+            )
+        else:
+            log.info(
+                "[bold cyan]vfactor[/bold cyan] and [bold cyan]pfactor[/bold cyan] corrections disabled for L/M band."
+            )
+
         # Only add --filter if mode is not "none"
         if filter_mode.lower() != "none":
             params.append(f"--filter={filter_mode}")

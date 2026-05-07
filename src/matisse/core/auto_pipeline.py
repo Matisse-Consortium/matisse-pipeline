@@ -181,7 +181,7 @@ def run_pipeline(
     else:
         log.debug("Using current recipe parameter: spectralAverage.")
 
-    # --- Build filt   ering parameters for mat_raw_estimates based on recipe version ---
+    # --- Build filtering parameters for mat_raw_estimates based on recipe version ---
     filter_params = build_raw_estimates_params(
         recipe_dir=custom_recipes_dir,
         vfactor_mode=vfactor_mode,

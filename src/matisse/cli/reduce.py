@@ -255,6 +255,11 @@ def reduce(
     _show_recipe_info(custom_recipes_dir)
     console.print(f"[magenta]CPU cores:[/] {nbcore}")
     console.print(f"[green]Resolution:[/] {resol.value}")
+    console.print(
+        f"[yellow]VFACTOR correction:[/] {'ON' if vfactor_mode else 'OFF'}, "
+        + f"[yellow]PFACTOR correction:[/] {'ON' if pfactor_mode else 'OFF'}, "
+        + f"[yellow]FILTER mode:[/] {filter_mode}"
+    )
     console.print(f"[dim]Verbose:[/] {'ON' if not verbose else 'OFF'}")
 
     # --- 4. Resolve paths for core function ---
