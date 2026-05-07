@@ -154,3 +154,28 @@ def test_tidyup_no_path(caplog):
         result = tidyup_path(missing_dir)
     assert result is None
     assert any("Path not found:" in m for m in caplog.messages)
+
+
+def test_tidyup_count_check_match_no_warning(tmp_path, caplog):
+    source_dir = tmp_path / "Iter1"
+    source_dir.mkdir()
+    _write_oifits(source_dir / "a.fits", catg="CALIB_RAW_INT")
+    _write_oifits(source_dir / "b.fits", catg="TARGET_RAW_INT")
+
+    with caplog.at_level("WARNING"):
+        tidyup_path(source_dir, expected_oifits=2)
+
+    assert not any("OIFITS count mismatch" in m for m in caplog.messages)
+
+
+def test_tidyup_count_check_mismatch_warns(tmp_path, caplog):
+    source_dir = tmp_path / "Iter1"
+    source_dir.mkdir()
+    _write_oifits(source_dir / "only_one.fits", catg="CALIB_RAW_INT")
+
+    with caplog.at_level("WARNING"):
+        tidyup_path(source_dir, expected_oifits=6)
+
+    assert any("OIFITS count mismatch" in m for m in caplog.messages)
+    assert any("expected 6" in m for m in caplog.messages)
+    assert any("found 1" in m for m in caplog.messages)

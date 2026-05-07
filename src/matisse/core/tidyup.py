@@ -85,7 +85,10 @@ def change_oifits_filename(oifits: Path) -> None:
         return
 
 
-def tidyup_path(input_dir: Path) -> None:
+def tidyup_path(
+    input_dir: Path,
+    expected_oifits: int | None = None,
+) -> None:
     """
     Replicates legacy behavior:
       - If 'path' is a file: rename it in place (no backup directory).
@@ -144,6 +147,7 @@ def tidyup_path(input_dir: Path) -> None:
         return
 
     log.info(f"Number of files to treat: {len(fits_files)}")
+    copied_oifits_count = 0
 
     with Progress() as progress:
         task = progress.add_task(
@@ -160,6 +164,19 @@ def tidyup_path(input_dir: Path) -> None:
                     dst = backup_dir / fifil
                     copy2(str(file), str(dst))
                     change_oifits_filename(dst)
+                    copied_oifits_count += 1
             except Exception:
                 continue
             progress.advance(task)
+
+    if expected_oifits is None:
+        return
+
+    if copied_oifits_count != expected_oifits:
+        log.warning(
+            "OIFITS count mismatch: expected "
+            f"{expected_oifits} from mat_raw_estimates (n_action_raw*6), "
+            f"found {copied_oifits_count}. "
+            "This is non-blocking and may happen for incomplete observation sequences, "
+            f"for example non-chopped observations (expected {int(expected_oifits / 6 * 4)})."
+        )

@@ -298,6 +298,97 @@ def test_run_pipeline_existing_output_dir(monkeypatch, tmp_path):
     assert run_called is False
 
 
+def test_run_pipeline_reports_expected_oifits_with_rerun(monkeypatch, tmp_path):
+    raw_dir = tmp_path / "raw"
+    calib_dir = tmp_path / "calib"
+    result_dir = tmp_path / "results"
+    raw_dir.mkdir()
+    calib_dir.mkdir()
+    result_dir.mkdir()
+
+    raw_path = raw_dir / "raw.fits"
+    raw_path.write_text("")
+
+    tplstart = "2025-01-01T00:00:00"
+    chip = "HAWAII-2RG"
+    rbname_safe = f"mat_raw_estimates.{tplstart}.HAWAII-2RG".replace(":", "_")
+    iter_dir = result_dir / "reduced"
+    iter_dir.mkdir()
+    output_dir = iter_dir / f"{rbname_safe}.rb"
+    output_dir.mkdir()
+    # Simulate an already processed block.
+    (output_dir / "TARGET_RAW_INT_001.fits").write_text("existing")
+
+    class _ConsoleStub:
+        def print(self, *_args, **_kwargs):
+            return None
+
+    dummy_console = _ConsoleStub()
+    monkeypatch.setattr(auto_pipeline, "console", dummy_console)
+    monkeypatch.setattr(log_utils, "console", dummy_console)
+    monkeypatch.setattr(auto_pipeline, "Progress", _DummyProgress)
+    monkeypatch.setattr(auto_pipeline, "Vizier", _DummyVizier)
+    monkeypatch.setattr(auto_pipeline, "section", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(auto_pipeline, "iteration_banner", lambda *_args: None)
+    monkeypatch.setattr(auto_pipeline, "remove_double_parameter", lambda value: value)
+    monkeypatch.setattr(
+        auto_pipeline, "add_mdfc_fluxes", lambda *_args, **_kwargs: None
+    )
+    monkeypatch.setattr(
+        auto_pipeline, "show_calibration_status", lambda *_args, **_kwargs: None
+    )
+    monkeypatch.setattr(
+        log_utils, "show_calibration_status", lambda *_args, **_kwargs: None
+    )
+    monkeypatch.setattr(
+        auto_pipeline, "show_blocs_status", lambda *_args, **_kwargs: True
+    )
+
+    def fake_resolve_raw_input(_path: str):
+        return [str(raw_path)], "manual"
+
+    def fake_getheader(_path: str, _index: int):
+        hdr = fits.Header()
+        hdr["HIERARCH ESO DPR TYPE"] = "OBJECT"
+        hdr["HIERARCH ESO DPR TECH"] = "INTERFEROMETRY"
+        hdr["HIERARCH ESO DPR CATG"] = "SCIENCE"
+        hdr["HIERARCH ESO DET CHIP NAME"] = chip
+        hdr["HIERARCH ESO INS DIL NAME"] = "LOW"
+        hdr["HIERARCH ESO TPL ID"] = "TPL-ID"
+        hdr["HIERARCH ESO TPL START"] = tplstart
+        hdr["ESO OBS TARG NAME"] = "TARGET-STAR"
+        hdr["HIERARCH ESO INS DIN NAME"] = "LOW"
+        return hdr
+
+    monkeypatch.setattr(auto_pipeline, "resolve_raw_input", fake_resolve_raw_input)
+    monkeypatch.setattr(auto_pipeline, "getheader", fake_getheader)
+    monkeypatch.setattr(auto_pipeline, "matisse_type", lambda _hdr: "TAG")
+    monkeypatch.setattr(
+        auto_pipeline,
+        "matisse_action",
+        lambda *_args, **_kwargs: "ACTION_MAT_RAW_ESTIMATES",
+    )
+    monkeypatch.setattr(
+        auto_pipeline,
+        "matisse_recipes",
+        lambda *_args, **_kwargs: ("mat_raw_estimates", "params"),
+    )
+    monkeypatch.setattr(
+        auto_pipeline, "matisse_calib", lambda *_args, **_kwargs: ([], 1)
+    )
+
+    summary = auto_pipeline.run_pipeline(
+        dirRaw=str(raw_dir),
+        dirCalib=str(calib_dir),
+        dirResult=str(result_dir),
+        skipN=True,
+        check_blocks=False,
+    )
+
+    assert summary["n_action_raw_estimates_final"] == 1
+    assert summary["expected_oifits"] == 6
+
+
 @pytest.mark.parametrize(
     "detector_overrides",
     [

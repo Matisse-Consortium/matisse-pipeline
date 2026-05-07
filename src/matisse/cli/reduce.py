@@ -264,7 +264,7 @@ def reduce(
 
     # --- 5. Run pipeline and handle errors ---
     try:
-        run_pipeline(
+        pipeline_summary = run_pipeline(
             dirRaw=dir_raw,
             dirResult=dir_result,
             dirCalib=dir_calib,
@@ -290,7 +290,10 @@ def reduce(
         )
 
         if not check_blocks and not check_calib and not check_files:
-            tidyup_path(Path(dir_result) / "reduced")
+            tidyup_path(
+                Path(dir_result) / "reduced",
+                expected_oifits=pipeline_summary.get("expected_oifits"),
+            )
             log.info(
                 "[green][SUCCESS] Results saved to reduced/ (intermediate) and reduced_OIFITS/ (oifits)"
             )

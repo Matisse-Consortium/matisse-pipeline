@@ -67,6 +67,11 @@ class RedBlock(TypedDict):
     error_msg: str
 
 
+class PipelineRunSummary(TypedDict):
+    n_action_raw_estimates_final: int | None
+    expected_oifits: int | None
+
+
 def run_esorex(args):
     """
     Execute a single EsoRex command in a separate process.
@@ -160,7 +165,7 @@ def run_pipeline(
     vfactor_mode: bool = True,
     pfactor_mode: bool = True,
     filter_mode: str = "vf,pf,jp",
-):
+) -> PipelineRunSummary:
     """Main function to run MATISSE automatic pipeline."""
 
     # --- Section header ---
@@ -186,7 +191,10 @@ def run_pipeline(
 
     if inventory:
         show_files_inventory(dirRaw)
-        return 0  # Exit after showing inventory if requested
+        return {
+            "n_action_raw_estimates_final": None,
+            "expected_oifits": None,
+        }
 
     # --- Setup Vizier to collect MATISSE magnitudes ---
     vizier_cat_mdfc = Vizier(
@@ -404,6 +412,8 @@ def run_pipeline(
     failed_messages: dict[str, str] = {}
 
     iterNumber = 0
+    n_action_raw_estimates_final: int | None = None
+    expected_oifits: int | None = None
     while True:
         iterNumber += 1
         iteration_banner(iterNumber)
@@ -619,6 +629,7 @@ def run_pipeline(
         cptStatusZero = 0
         cptToProcess = 0
         cpt = 0
+        raw_estimates_ready_count = 0
 
         skip_calib_iter = False
         for i_block, red_block in enumerate(list_red_blocks):
@@ -631,6 +642,8 @@ def run_pipeline(
             overwritei = overwrite
             if red_block["status"] == 1:
                 cptStatusOne += 1
+                if red_block["action"] == "ACTION_MAT_RAW_ESTIMATES":
+                    raw_estimates_ready_count += 1
 
                 # In check mode, mark block as ready but don't create
                 # any files or directories (purely informational)
@@ -893,6 +906,9 @@ def run_pipeline(
                 block["status"] = -1
                 block["error_msg"] = failed_messages.get(block["tplstart"], "")
 
+        n_action_raw_estimates_final = raw_estimates_ready_count
+        expected_oifits = raw_estimates_ready_count * 6
+
         if show_blocs_status(listCmdEsorex, list_red_blocks, check_blocks):
             break
 
@@ -905,3 +921,8 @@ def run_pipeline(
     # --- Save pipeline report as SVG ---
     if save_report_svg:
         save_report(dirResult)
+
+    return {
+        "n_action_raw_estimates_final": n_action_raw_estimates_final,
+        "expected_oifits": expected_oifits,
+    }

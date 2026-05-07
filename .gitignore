@@ -12,6 +12,7 @@ build/
 CODESTYLE_MATISSE.md
 # Ignore Iter results from pytest
 Iter*/
+esorex.log
 
 # Ignore legacy from previous scripts structure
 src/matisse/core/legacy/
