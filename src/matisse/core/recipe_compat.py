@@ -113,7 +113,7 @@ def build_raw_estimates_params(
     else:
         # Recipe 2.2.3 or older: filtering parameters not supported
         if vfactor_mode or pfactor_mode or filter_mode != "vf,pf,jp":
-            log.debug(
+            log.warning(
                 "Recipe does not support --vfactor, --pfactor, --filter. "
                 "Parameters ignored (consider upgrading recipes)."
             )
