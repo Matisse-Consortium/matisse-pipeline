@@ -114,10 +114,16 @@ def reduce(
         show_default="ALL",
         rich_help_panel=PANEL_CORE,
     ),
-    spectral_average: str = typer.Option(
-        "",
+    custom_recipes_dir: Path | None = typer.Option(
+        None,
+        "--recipe-dir",
+        help="Custom directory for MATISSE recipes (default: user esorex repository).",
+        rich_help_panel=PANEL_RECIPE_ADVANCED,
+    ),
+    spectral_average: int = typer.Option(
+        -1,
         "--spectral-average",
-        help="Number of spectral channels to average to improve SNR (default: 7 for N band, 5 for L/M band).",
+        help="Number of spectral channels to average to improve SNR (if -1 (default) apply: 7 for N band, 5 for L/M band).",
         rich_help_panel=PANEL_RECIPE_ADVANCED,
     ),
     vfactor_mode: bool = typer.Option(
@@ -161,12 +167,6 @@ def reduce(
         "",
         "--tplstart",
         help="Template start to select.",
-        rich_help_panel=PANEL_RECIPE_ADVANCED,
-    ),
-    custom_recipes_dir: Path | None = typer.Option(
-        None,
-        "--recipe-dir",
-        help="Custom directory for MATISSE recipes (default: user esorex repository).",
         rich_help_panel=PANEL_RECIPE_ADVANCED,
     ),
     param_n: str = typer.Option(
