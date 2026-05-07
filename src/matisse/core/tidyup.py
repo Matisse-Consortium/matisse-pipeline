@@ -121,9 +121,8 @@ def tidyup_path(input_dir: Path) -> None:
         log.warning(f"Path not found: {input_dir}")
         return
 
-    # Legacy creates the backup dir in the CURRENT WORKING DIRECTORY, not inside 'path'
-    cwd = Path.cwd()
-    backup_dir = cwd / f"{input_dir.resolve().name}_OIFITS"
+    # Create the backup dir next to the input directory (i.e. as a sibling)
+    backup_dir = input_dir.resolve().parent / f"{input_dir.resolve().name}_OIFITS"
     if backup_dir.exists():
         log.info(f"{backup_dir} already exists.")
     else:
@@ -137,6 +136,7 @@ def tidyup_path(input_dir: Path) -> None:
         p
         for p in input_dir.rglob("*")
         if (p.suffix in (".fits", ".gz") or p.name.endswith(".fits.gz"))
+        and not p.name.startswith("._")
         and not any(fnmatch(p.name, pat) for pat in SKIP_PATTERNS)
     ]
     if len(fits_files) == 0:

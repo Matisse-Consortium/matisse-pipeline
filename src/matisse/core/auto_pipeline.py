@@ -533,7 +533,12 @@ def run_pipeline(
         # Fill the list of calib in the Reduction Blocks List from dirCalib
         log.debug("Listing calibrations in the reduction blocks...")
 
-        with Progress(console=console, transient=True) as progress:
+        with Progress(
+            SpinnerColumn(),
+            *Progress.get_default_columns(),
+            console=console,
+            transient=True,
+        ) as progress:
             task = progress.add_task(
                 "[cyan]Listing calibrations...",
                 total=len(list_red_blocks),
