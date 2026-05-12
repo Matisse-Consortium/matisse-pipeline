@@ -85,7 +85,10 @@ def change_oifits_filename(oifits: Path) -> None:
         return
 
 
-def tidyup_path(input_dir: Path) -> None:
+def tidyup_path(
+    input_dir: Path,
+    expected_oifits: int | None = None,
+) -> None:
     """
     Replicates legacy behavior:
       - If 'path' is a file: rename it in place (no backup directory).
@@ -121,9 +124,8 @@ def tidyup_path(input_dir: Path) -> None:
         log.warning(f"Path not found: {input_dir}")
         return
 
-    # Legacy creates the backup dir in the CURRENT WORKING DIRECTORY, not inside 'path'
-    cwd = Path.cwd()
-    backup_dir = cwd / f"{input_dir.resolve().name}_OIFITS"
+    # Create the backup dir next to the input directory (i.e. as a sibling)
+    backup_dir = input_dir.resolve().parent / f"{input_dir.resolve().name}_OIFITS"
     if backup_dir.exists():
         log.info(f"{backup_dir} already exists.")
     else:
@@ -137,6 +139,7 @@ def tidyup_path(input_dir: Path) -> None:
         p
         for p in input_dir.rglob("*")
         if (p.suffix in (".fits", ".gz") or p.name.endswith(".fits.gz"))
+        and not p.name.startswith("._")
         and not any(fnmatch(p.name, pat) for pat in SKIP_PATTERNS)
     ]
     if len(fits_files) == 0:
@@ -144,6 +147,7 @@ def tidyup_path(input_dir: Path) -> None:
         return
 
     log.info(f"Number of files to treat: {len(fits_files)}")
+    copied_oifits_count = 0
 
     with Progress() as progress:
         task = progress.add_task(
@@ -160,6 +164,19 @@ def tidyup_path(input_dir: Path) -> None:
                     dst = backup_dir / fifil
                     copy2(str(file), str(dst))
                     change_oifits_filename(dst)
+                    copied_oifits_count += 1
             except Exception:
                 continue
             progress.advance(task)
+
+    if expected_oifits is None:
+        return
+
+    if copied_oifits_count != expected_oifits:
+        log.warning(
+            "OIFITS count mismatch: expected "
+            f"{expected_oifits} from mat_raw_estimates (n_action_raw*6), "
+            f"found {copied_oifits_count}. "
+            "This is non-blocking and may happen for incomplete observation sequences, "
+            f"for example non-chopped observations (expected {int(expected_oifits / 6 * 4)})."
+        )

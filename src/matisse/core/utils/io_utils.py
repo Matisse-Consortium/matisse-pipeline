@@ -62,9 +62,12 @@ def resolve_raw_input(raw_spec: str | Sequence[str]) -> tuple[list[Path], str]:
 
         if p.is_dir():
             # Directory -> glob for MATIS*.fits
-            fits_files = glob.glob(str(p / "MATIS*.fits")) + glob.glob(
-                str(p / "MATIS*.fits.gz")
-            )
+            fits_files = [
+                x
+                for x in glob.glob(str(p / "MATIS*.fits"))
+                + glob.glob(str(p / "MATIS*.fits.gz"))
+                if not Path(x).name.startswith("._")
+            ]
             paths = [Path(x) for x in fits_files]
             source = "directory glob (MATIS*.fits)"
         elif p.is_file():

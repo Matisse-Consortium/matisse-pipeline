@@ -5,7 +5,11 @@ import pytest
 from astropy.io import fits
 from typer.testing import CliRunner
 
-from matisse.cli import format_results as format_module, show as show_module
+from matisse.cli import (
+    format_results as format_module,
+    reduce as reduce_module,
+    show as show_module,
+)
 from matisse.cli.main import app
 from matisse.core.utils.oifits_reader import OIFitsReader
 
@@ -114,6 +118,50 @@ def test_reduce_no_good_res(tmp_path):
     clean_output = strip_ansi(result.output)
     assert result.exit_code != 0
     assert "Invalid value for '--resol'" in clean_output
+
+
+def test_reduce_passes_expected_count_to_tidyup(tmp_path, monkeypatch):
+    datadir = tmp_path / "data"
+    resultdir = tmp_path / "results"
+    datadir.mkdir()
+    resultdir.mkdir()
+
+    captured = {
+        "expected_oifits": None,
+        "path": None,
+    }
+
+    def fake_run_pipeline(**_kwargs):
+        return {
+            "n_action_raw_estimates_final": 2,
+            "expected_oifits": 12,
+        }
+
+    def fake_tidyup(path, expected_oifits=None):
+        captured["path"] = path
+        captured["expected_oifits"] = expected_oifits
+
+    monkeypatch.setattr(
+        reduce_module, "_show_recipe_info", lambda *_args, **_kwargs: None
+    )
+    monkeypatch.setattr(reduce_module, "run_pipeline", fake_run_pipeline)
+    monkeypatch.setattr(reduce_module, "tidyup_path", fake_tidyup)
+
+    result = runner.invoke(
+        app,
+        [
+            "reduce",
+            "--data-dir",
+            str(datadir),
+            "--result-dir",
+            str(resultdir),
+        ],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 0
+    assert captured["path"] == resultdir / "reduced"
+    assert captured["expected_oifits"] == 12
 
 
 def test_matisse_format_with_fake_file(tmp_path, caplog):

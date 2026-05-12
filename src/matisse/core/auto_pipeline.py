@@ -38,6 +38,7 @@ from matisse.core.lib_auto_pipeline import (
     matisse_type,
     probe_spectral_param_name,
 )
+from matisse.core.recipe_compat import build_raw_estimates_params
 from matisse.core.utils.common import remove_double_parameter
 from matisse.core.utils.io_utils import _is_ignored_fits_sidecar, resolve_raw_input
 from matisse.core.utils.log_utils import (
@@ -64,6 +65,11 @@ class RedBlock(TypedDict):
     tplstart: str
     iter: int
     error_msg: str
+
+
+class PipelineRunSummary(TypedDict):
+    n_action_raw_estimates_final: int | None
+    expected_oifits: int | None
 
 
 def run_esorex(args):
@@ -149,14 +155,18 @@ def run_pipeline(
     skipN: bool = False,
     tplstartsel: str = "",
     tplidsel: str = "",
-    spectralAverage: str = "",
+    spectralAverage: int = -1,
     check_blocks: bool = False,
     check_calib: bool = False,
     detailed_block: int | None = None,
     custom_recipes_dir: Path | None = None,
     save_report_svg: bool = False,
     inventory: bool = False,
-):
+    vfactor_mode: bool = True,
+    pfactor_mode: bool = True,
+    filter_mode: str = "vf,pf,jp",
+    filter_baseline: int | None = None,
+) -> PipelineRunSummary:
     """Main function to run MATISSE automatic pipeline."""
 
     # --- Section header ---
@@ -172,9 +182,21 @@ def run_pipeline(
     else:
         log.debug("Using current recipe parameter: spectralAverage.")
 
+    # --- Build filtering parameters for mat_raw_estimates based on recipe version ---
+    filter_params = build_raw_estimates_params(
+        recipe_dir=custom_recipes_dir,
+        vfactor_mode=vfactor_mode,
+        pfactor_mode=pfactor_mode,
+        filter_mode=filter_mode,
+        filter_baseline=filter_baseline,
+    )
+
     if inventory:
         show_files_inventory(dirRaw)
-        return 0  # Exit after showing inventory if requested
+        return {
+            "n_action_raw_estimates_final": None,
+            "expected_oifits": None,
+        }
 
     # --- Setup Vizier to collect MATISSE magnitudes ---
     vizier_cat_mdfc = Vizier(
@@ -392,6 +414,8 @@ def run_pipeline(
     failed_messages: dict[str, str] = {}
 
     iterNumber = 0
+    n_action_raw_estimates_final: int | None = None
+    expected_oifits: int | None = None
     while True:
         iterNumber += 1
         iteration_banner(iterNumber)
@@ -414,6 +438,7 @@ def run_pipeline(
                         for f in os.listdir(elt)
                         if os.path.isfile(os.path.join(elt, f))
                         and (f.endswith(".fits") or f.endswith(".fits.gz"))
+                        and not f.startswith("._")
                     ]
 
         _iter_log("Listing reduction blocks...")
@@ -477,8 +502,8 @@ def run_pipeline(
 
             if action == "ACTION_MAT_RAW_ESTIMATES":
                 if hdr["HIERARCH ESO DET CHIP NAME"] == "AQUARIUS":
-                    if spectralAverage != "":
-                        paramN += f" --{spectral_param}=" + spectralAverage
+                    if spectralAverage != -1:
+                        paramN += f" --{spectral_param}=" + str(spectralAverage)
                     else:
                         paramN += f" --{spectral_param}=7"
 
@@ -487,8 +512,8 @@ def run_pipeline(
                     else:
                         red_block["param"] = paramN + " " + param
                 else:
-                    if spectralAverage != "":
-                        paramL += f" --{spectral_param}=" + spectralAverage
+                    if spectralAverage != -1:
+                        paramL += f" --{spectral_param}=" + str(spectralAverage)
                     else:
                         paramL += f" --{spectral_param}=5"
 
@@ -496,6 +521,11 @@ def run_pipeline(
                         red_block["param"] = param
                     else:
                         red_block["param"] = paramL + " " + param
+
+                # Append filtering parameters (vfactor, pfactor, filter)
+                # Only for L/M band since these are L/M-specific in the recipe
+                if hdr["HIERARCH ESO DET CHIP NAME"] == "HAWAII-2RG" and filter_params:
+                    red_block["param"] += " " + filter_params
             else:
                 red_block["param"] = param
             red_block["tplstart"] = keyTplStartCurrent
@@ -515,7 +545,12 @@ def run_pipeline(
         # Fill the list of calib in the Reduction Blocks List from dirCalib
         log.debug("Listing calibrations in the reduction blocks...")
 
-        with Progress(console=console, transient=True) as progress:
+        with Progress(
+            SpinnerColumn(),
+            *Progress.get_default_columns(),
+            console=console,
+            transient=True,
+        ) as progress:
             task = progress.add_task(
                 "[cyan]Listing calibrations...",
                 total=len(list_red_blocks),
@@ -580,6 +615,10 @@ def run_pipeline(
 
         repIter = os.path.join(dirResult, "reduced")
         if not check_blocks:
+            # Ensure parent dirResult exists first
+            if not os.path.isdir(dirResult):
+                os.makedirs(dirResult, exist_ok=True)
+
             if os.path.isdir(repIter):
                 if overwrite == 1:
                     shutil.rmtree(repIter)
@@ -592,6 +631,7 @@ def run_pipeline(
         cptStatusZero = 0
         cptToProcess = 0
         cpt = 0
+        raw_estimates_ready_count = 0
 
         skip_calib_iter = False
         for i_block, red_block in enumerate(list_red_blocks):
@@ -604,6 +644,8 @@ def run_pipeline(
             overwritei = overwrite
             if red_block["status"] == 1:
                 cptStatusOne += 1
+                if red_block["action"] == "ACTION_MAT_RAW_ESTIMATES":
+                    raw_estimates_ready_count += 1
 
                 # In check mode, mark block as ready but don't create
                 # any files or directories (purely informational)
@@ -813,8 +855,11 @@ def run_pipeline(
                         ) in pool.imap_unordered(run_esorex, tasks):
                             results.append((block_index, success))
                             if success:
+                                from datetime import datetime
+
                                 progress.console.print(
-                                    f"  [green]✅ Block #{block_index}[/] {recipe}"
+                                    f"  [green]✅ Block #{block_index}[/] {recipe} "
+                                    f"[dim]({datetime.now().strftime('%H:%M:%S')})[/dim]"
                                 )
                             else:
                                 progress.console.print(
@@ -863,6 +908,9 @@ def run_pipeline(
                 block["status"] = -1
                 block["error_msg"] = failed_messages.get(block["tplstart"], "")
 
+        n_action_raw_estimates_final = raw_estimates_ready_count
+        expected_oifits = raw_estimates_ready_count * 6
+
         if show_blocs_status(listCmdEsorex, list_red_blocks, check_blocks):
             break
 
@@ -875,3 +923,8 @@ def run_pipeline(
     # --- Save pipeline report as SVG ---
     if save_report_svg:
         save_report(dirResult)
+
+    return {
+        "n_action_raw_estimates_final": n_action_raw_estimates_final,
+        "expected_oifits": expected_oifits,
+    }

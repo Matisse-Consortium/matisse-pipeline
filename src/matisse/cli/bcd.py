@@ -353,7 +353,9 @@ def remove(
         remove_bcd(hdu, save=True)
         hdu.close()
 
-    list_bcd_removed = sorted(Path(input_dir).glob("*_noBCD.fits"))
+    list_bcd_removed = sorted(
+        f for f in Path(input_dir).glob("*_noBCD.fits") if not f.name.startswith("._")
+    )
     nobcd_dir = input_dir.parent / f"{input_dir.name}_noBCD"
     nobcd_dir.mkdir(parents=True, exist_ok=True)
     for file in list_bcd_removed:
