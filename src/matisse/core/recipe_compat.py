@@ -65,6 +65,7 @@ def build_raw_estimates_params(
     vfactor_mode: bool = True,
     pfactor_mode: bool = True,
     filter_mode: str = "vf,pf,jp",
+    filter_baseline: int | None = None,
 ) -> str:
     """
     Build recipe-specific parameters for mat_raw_estimates based on recipe version.
@@ -86,6 +87,9 @@ def build_raw_estimates_params(
     filter_mode : str
         Filter modes to apply (comma-separated: "vf, pf, jp", or none).
         Default: "vf,pf,jp". Only used for recipes 2.0.1+ (pre-production).
+    filter_baseline : int | None
+        Baseline index to filter (1-6). None = no filtering.
+        Only used for recipes 2.0.1+ (pre-production).
 
     Returns
     -------
@@ -126,10 +130,19 @@ def build_raw_estimates_params(
         if filter_mode.lower() != "none":
             params.append(f"--filter={filter_mode}")
 
+        if filter_baseline is not None:
+            params.append(f"--filterBaseline={filter_baseline}")
+            log.info(f"Filtering data restricted to baseline index {filter_baseline}.")
+
         log.debug(f"Using filtering parameters for recipe 2.0.1+: {' '.join(params)}")
     else:
         # Recipe 2.2.3 or older: filtering parameters not supported
-        if vfactor_mode or pfactor_mode or filter_mode != "vf,pf,jp":
+        if (
+            vfactor_mode
+            or pfactor_mode
+            or filter_mode != "vf,pf,jp"
+            or filter_baseline is not None
+        ):
             log.warning(
                 "Recipe does not support --vfactor, --pfactor, --filter. "
                 "Parameters ignored (consider upgrading recipes)."

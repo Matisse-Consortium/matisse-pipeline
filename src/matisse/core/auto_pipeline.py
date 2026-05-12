@@ -165,6 +165,7 @@ def run_pipeline(
     vfactor_mode: bool = True,
     pfactor_mode: bool = True,
     filter_mode: str = "vf,pf,jp",
+    filter_baseline: int | None = None,
 ) -> PipelineRunSummary:
     """Main function to run MATISSE automatic pipeline."""
 
@@ -187,6 +188,7 @@ def run_pipeline(
         vfactor_mode=vfactor_mode,
         pfactor_mode=pfactor_mode,
         filter_mode=filter_mode,
+        filter_baseline=filter_baseline,
     )
 
     if inventory:

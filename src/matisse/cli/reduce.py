@@ -72,6 +72,15 @@ def _validate_filter_mode(value: str) -> str:
     return ",".join(unique_values)
 
 
+def _validate_filter_baseline(value: int | None) -> int | None:
+    """Validate that filter_baseline is between 1 and 6 (MATISSE baselines)."""
+    if value is None:
+        return None
+    if value not in range(1, 7):
+        raise typer.BadParameter("Must be an integer between 1 and 6.")
+    return value
+
+
 def reduce(
     datadir: Path = typer.Option(
         Path.cwd(),
@@ -143,6 +152,15 @@ def reduce(
         "--filter-mode",
         callback=lambda value: _validate_filter_mode(value),
         help="Filter modes: vf (vfactor), pf (pfactor), jp (fringe jump), or none (recipe 2.0.1+ only).",
+        rich_help_panel=PANEL_CORE,
+    ),
+    filter_baseline: int | None = typer.Option(
+        None,
+        "--filter-baseline",
+        callback=lambda value: _validate_filter_baseline(value),
+        help="Filter data by baseline index (1–6, recipe 2.0.1+ only)."
+        + " Note: Indices follow the MATISSE data order. To filter multiple baselines, run the reduction for each index individually. Future updates may allow passing multiple indices and combining the resulting OIFITS files. "
+        + "[dim][Default: no filtering.][/dim]",
         rich_help_panel=PANEL_CORE,
     ),
     skip_l: bool = typer.Option(
@@ -258,7 +276,8 @@ def reduce(
     console.print(
         f"[yellow]VFACTOR correction:[/] {'ON' if vfactor_mode else 'OFF'}, "
         + f"[yellow]PFACTOR correction:[/] {'ON' if pfactor_mode else 'OFF'}, "
-        + f"[yellow]FILTER mode:[/] {filter_mode}"
+        + f"[yellow]FILTER mode:[/] {filter_mode}, "
+        + f"[yellow]FILTER baseline:[/] {filter_baseline if filter_baseline is not None else 'none'}"
     )
     console.print(f"[dim]Verbose:[/] {'ON' if not verbose else 'OFF'}")
 
@@ -292,6 +311,7 @@ def reduce(
             vfactor_mode=vfactor_mode,
             pfactor_mode=pfactor_mode,
             filter_mode=filter_mode,
+            filter_baseline=filter_baseline,
         )
 
         if not check_blocks and not check_calib and not check_files:
