@@ -41,7 +41,7 @@ def detect_has_filtering_params(recipe_dir: Path | None = None) -> bool:
     try:
         cmd = ["esorex"]
         if recipe_dir is not None:
-            cmd.extend(["--recipe-dir", str(recipe_dir)])
+            cmd.extend([f"--recipe-dir={str(recipe_dir)}"])
         cmd.extend(["--man-page", "mat_raw_estimates"])
 
         result = subprocess.run(
