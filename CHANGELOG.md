@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.7.0 (2026-05-19)
+
+### Feat
+
+- add new filter on individual baseline
+- add count on mat_raw_estimate to estimates expected oifits files
+- add different rich help panel
+- add new filtering parameters compatible with the last pipeline version (2.0.1+)
+
+### Fix
+
+- fix the recipe overide in check params
+- add vfactor/pfactor and filtering console helper
+- change spectralAverage to int and apply it in the pipeline
+- warning instead of debug for old recipe vfactor
+- default integer as spectralAverage
+- OIFITS dir now in --results-dir as expected
+- add the time in the esorex progress print
+- ignore ._*.fits (macOS FAT32 hidden files) in the fits discovery
+- creates dirResult if not already there
+- display ALL as resolution by default (reduce all resolution available)
+- ignore macOS AppleDouble sidecar files in inventory and input resolution
+
 ## v0.6.1 (2026-04-29)
 
 ### Fix
