@@ -58,6 +58,26 @@ def test_generate_calibration_sof_files(data_dir, tmp_path):
         assert "TARGET_RAW_INT" in content
 
 
+def test_generate_sof_files_force_sci(data_dir, tmp_path):
+    """A CAL target name passed via force_sci_names is promoted to SCI."""
+    arbitrary_large_timespan = 300  # hours
+    # ome01_Tau is the calibrator in tests/data/MATIS_calibrator-LM_reduced.fits
+    sof_files = lac.generate_sof_files(
+        input_dir=data_dir,
+        band="-LM",
+        output_dir=tmp_path,
+        timespan=arbitrary_large_timespan,
+        force_sci_names=["ome01_Tau"],
+    )
+
+    forced_sof = next((s for s in sof_files if "calibrator" in s.name), None)
+    assert forced_sof is not None, "Expected a SOF for the forced ome01_Tau target"
+
+    content = forced_sof.read_text()
+    assert "MATIS_calibrator-LM_reduced.fits\tTARGET_RAW_INT" in content
+    assert "CALIB_RAW_INT" not in content
+
+
 def test_run_calibration_pipeline(data_dir, tmp_path, skip_without_esorex):
     """Test complete calibration pipeline (requires esorex)."""
     # Run the complete calibration pipeline

@@ -26,6 +26,7 @@ def generate_sof_files(
     output_dir: Path,
     band: str,
     timespan: float = 1,
+    force_sci_names: list[str] | None = None,
 ) -> list[Path]:
     """Generate SOF files associating targets with calibrators.
 
@@ -39,6 +40,9 @@ def generate_sof_files(
         Spectral band flag ('-N' or '-LM').
     timespan : float, optional
         Time window in hours to associate calibrations (default is 1).
+    force_sci_names : list[str] or None, optional
+        Target names (matched against HIERARCH ESO OBS TARG NAME) to promote
+        from CALIB_RAW_INT to SCI in the generated SOF. Default is None.
 
     Returns
     -------
@@ -47,6 +51,7 @@ def generate_sof_files(
     """
     log.info(f"Scanning oifits files in [magenta]{input_dir.name}/[/]")
 
+    forced_names = set(force_sci_names or [])
     targets = []
     calibs = []
 
@@ -63,15 +68,23 @@ def generate_sof_files(
             hdr = hdul[0].header
 
         catg = hdr.get("ESO PRO CATG", "")
+        target_name = hdr.get("ESO OBS TARG NAME", "")
+        is_forced = catg == "CALIB_RAW_INT" and target_name in forced_names
 
-        if catg == "TARGET_RAW_INT":
+        if catg == "TARGET_RAW_INT" or is_forced:
+            if is_forced:
+                log.info(
+                    f"[yellow]Forcing[/] '{target_name}' as SCI (from {fits_file.name})"
+                )
             targets.append(
                 {
                     "path": fits_file,
                     "mjd": hdr["MJD-OBS"],
                     "chip": hdr["ESO DET CHIP NAME"],
                     "dit": hdr["ESO DET SEQ1 DIT"],
-                    "tplstart": hdr["ESO TPL START"],
+                    # tplstart may be missing on CAL files; fall back to MJD
+                    # so grouping still works for forced SCI.
+                    "tplstart": hdr.get("ESO TPL START") or str(hdr["MJD-OBS"]),
                 }
             )
         elif catg == "CALIB_RAW_INT":
@@ -81,6 +94,7 @@ def generate_sof_files(
                     "mjd": hdr["MJD-OBS"],
                     "chip": hdr["ESO DET CHIP NAME"],
                     "dit": hdr["ESO DET SEQ1 DIT"],
+                    "target_name": target_name,
                 }
             )
 
@@ -91,7 +105,14 @@ def generate_sof_files(
             f"No target/calibrator files found for {band.replace('-', '')} band"
         )
     elif n_targets == 0 and n_calibs > 0:
-        log.warning(f"No target files found for band {band.replace('-', '')}")
+        available = sorted({c["target_name"] for c in calibs if c["target_name"]})
+        hint = (
+            f" Available calibrator target names: {', '.join(available)}. "
+            "Use --force-sci NAME to promote one."
+            if available
+            else ""
+        )
+        log.warning(f"No target files found for band {band.replace('-', '')}.{hint}")
     elif n_targets > 0 and n_calibs == 0:
         log.warning(f"No calibrator files found for band {band.replace('-', '')}")
     else:
