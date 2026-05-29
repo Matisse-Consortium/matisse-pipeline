@@ -31,6 +31,7 @@ def run_calibration(
     timespan: float = 1,
     cumul_block: bool = True,
     custom_recipes_dir: Path | None = None,
+    force_sci_names: list[str] | None = None,
 ) -> None:
     """Run complete MATISSE calibration for specified bands.
 
@@ -48,6 +49,9 @@ def run_calibration(
         Enable cumulBlock parameter in esorex (default is True).
     custom_recipes_dir: Path | None = None, optional
         Custom directory for MATISSE recipes.
+    force_sci_names : list[str] or None, optional
+        Target names to promote from CALIB_RAW_INT to SCI in the SOF.
+        Default is None.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -61,6 +65,7 @@ def run_calibration(
             output_dir=output_dir,
             band=band_flag,
             timespan=timespan,
+            force_sci_names=force_sci_names,
         )
 
         # Process each SOF file
