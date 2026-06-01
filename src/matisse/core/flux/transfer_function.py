@@ -43,12 +43,12 @@ logger = logging.getLogger(__name__)
 
 
 def resample_model_spectrum(
-    wav_model: np.darray,
-    flux_model: np.darray,
-    wav_obs: np.darray,
-    detector_type,
-    nsigma=5,
-) -> np.darray:
+    wav_model: np.ndarray,
+    flux_model: np.ndarray,
+    wav_obs: np.ndarray,
+    detector_type: str,
+    nsigma: int = 5,
+) -> np.ndarray:
     """Resample a calibrator model spectrum onto the MATISSE wavelength grid.
 
     Two strategies are used depending on the relative sampling:

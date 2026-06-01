@@ -270,7 +270,7 @@ def resample_to_matisse_resolution_old(
 def _resample_to_matisse_resolution(
     wav_model: np.ndarray,
     flux_model: np.ndarray,
-    wav_obs: np.darray,
+    wav_obs: np.ndarray,
     size_spec_channel: float,
     nsigma: int,
 ) -> np.ndarray:
