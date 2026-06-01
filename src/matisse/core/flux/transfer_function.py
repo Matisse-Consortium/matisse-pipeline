@@ -83,9 +83,9 @@ def resample_model_spectrum(
 
     # Get the size of a spectral channel (in pix) depending on the detector (spectral band)
     if "HAWAII" in detector_type:
-        size_spec_channel = 4.92
+        SIZE_SPEC_CHANNEL = 4.92
     else:
-        size_spec_channel = 7.87
+        SIZE_SPEC_CHANNEL = 7.87
 
     if 2.0 * len(wav_obs) < n_model_in_range:
         # Model is much denser → bin-weighted integration
@@ -98,7 +98,7 @@ def resample_model_spectrum(
             wav_obs,
             wav_model,
             flux_model,
-            size_spec_channel,
+            SIZE_SPEC_CHANNEL,
             nsigma,
         )
     else:
@@ -106,65 +106,6 @@ def resample_model_spectrum(
         logger.debug("Model comparable/sparser → cubic interpolation.")
         f = interp1d(wav_model, flux_model, kind="cubic", bounds_error=False)
         return f(wav_obs)
-
-
-# def resample_model_spectrum(
-#    wav_model: np.ndarray,
-#    flux_model: np.ndarray,
-#    wav_obs: np.ndarray,
-# ) -> np.ndarray:
-#    """Resample a calibrator model spectrum onto the observation wavelength grid.
-
-#    Two strategies are used depending on the relative sampling:
-
-#    - If the model is **much denser** than the observation (>2× more points
-#      in the overlap region), a **bin-weighted integration** is performed
-#      to properly average the model within each observation channel.
-#    - Otherwise, a **cubic interpolation** is used.
-
-#    Parameters
-#    ----------
-#    wav_model : np.ndarray
-#        Model wavelength grid (same units as *wav_obs*; must be sorted ascending).
-#    flux_model : np.ndarray
-#        Model flux array (Jy).
-#    wav_obs : np.ndarray
-#        Observation wavelength grid (sorted ascending).
-
-#    Returns
-#    -------
-#    np.ndarray
-#        Resampled flux on the ``wav_obs`` grid (Jy).
-#    """
-#    # Build bin edges for the model grid
-#    wav_bin_lower_model, wav_bin_upper_model, d_wav_model = _compute_bin_edges(
-#        wav_model
-#    )
-
-# Check sampling ratio in the overlap region
-#    overlap_mask = (wav_model > np.nanmin(wav_obs)) & (wav_model < np.nanmax(wav_obs))
-#    n_model_in_range = int(np.nansum(overlap_mask))
-
-#    if 2.0 * len(wav_obs) < n_model_in_range:
-#        # Model is much denser → bin-weighted integration
-#        logger.debug(
-#            "Model denser than obs (%d vs %d) → bin integration.",
-#            n_model_in_range,
-#            len(wav_obs),
-#        )
-#        return _resample_by_bin_integration(
-#            wav_obs,
-#            wav_model,
-#            flux_model,
-#            wav_bin_lower_model,
-#            wav_bin_upper_model,
-#            d_wav_model,
-#        )
-#    else:
-#        # Comparable or sparser → cubic interpolation
-#        logger.debug("Model comparable/sparser → cubic interpolation.")
-#        f = interp1d(wav_model, flux_model, kind="cubic", bounds_error=False)
-#        return f(wav_obs)
 
 
 def _compute_bin_edges(
