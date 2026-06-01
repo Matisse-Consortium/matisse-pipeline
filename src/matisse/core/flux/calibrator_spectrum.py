@@ -102,7 +102,10 @@ class CalibratorSpectrum:
 # STARSFLUX (online) lookup
 # ---------------------------------------------------------------------------
 
-_STARSFLUX_BASE_URL = "https://home.strw.leidenuniv.nl/~gamez/catalog/fitsfiles/Aug20"
+# _STARSFLUX_BASE_URL = "https://home.strw.leidenuniv.nl/~gamez/catalog/fitsfiles/Aug20"
+_STARSFLUX_BASE_URL = (
+    "https://home.strw.leidenuniv.nl/~gamez/catalog/fitsfilesFinal/Dec30"
+)
 
 
 def lookup_starsflux(
