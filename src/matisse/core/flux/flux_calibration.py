@@ -193,7 +193,7 @@ def discover_oifits_files(
     for fpath in sorted(glob.glob(sci_pattern)):
         with fits.open(fpath) as hdu:
             catg = hdu[0].header.get("HIERARCH ESO PRO CATG", "")
-            if catg == "TARGET_RAW_INT":
+            if catg == "TARGET_RAW_INT" or catg == "TARGET_CAL_INT":
                 sci_paths.append(Path(fpath))
 
     if cal_name:
@@ -418,7 +418,7 @@ def calibrate_flux(
         hdr_sci["HIERARCH ESO ISS AMBI IWV30D START"]
         + hdr_sci["HIERARCH ESO ISS AMBI IWV30D END"]
     ) / 2.0
-
+    detector = hdr_sci["HIERARCH ESO DET CHIP NAME"]
     exp_sci, int_time_med_sci = _extract_exposure_times(hdul_sci)
     exp_cal, int_time_med_cal = _extract_exposure_times(hdul_cal)
 
@@ -522,7 +522,9 @@ def calibrate_flux(
 
     # 6. Resample model spectrum to observation grid
     is_dense_model = len(wav_model) > len(wav_cal_proc)
-    spectrum_resampled = resample_model_spectrum(wav_model, flux_model, wav_cal_proc)
+    spectrum_resampled = resample_model_spectrum(
+        wav_model, flux_model, wav_cal_proc, detector
+    )
     logger.info("Model spectrum resampled to %d channels.", len(spectrum_resampled))
 
     # Only generate the calibrator spectrum diagnostic for the first SCI-CAL pair to avoid redundancy

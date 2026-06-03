@@ -21,16 +21,10 @@ import subprocess
 from pathlib import Path
 
 import numpy as np
-from astropy.convolution import Box1DKernel, Gaussian1DKernel, convolve
 from astropy.io import fits
-from numpy.polynomial.polynomial import polyval
-from scipy.interpolate import interp1d
 
 from matisse.core.flux.utils import (
     find_nearest_idx,
-    get_dl_coeffs,
-    get_dlambda,
-    get_spectral_average,
 )
 
 logger = logging.getLogger(__name__)
@@ -53,7 +47,7 @@ def create_skycalc_input(
     *,
     wdelta: float = 0.1,
     wgrid_mode: str = "fixed_wavelength_step",
-    wres: float = 20000.0,
+    wres: float = 300000.0,
     lsf_type: str = "none",
     lsf_gauss_fwhm: float = 5.0,
 ) -> None:
@@ -194,80 +188,65 @@ def read_skycalc_output(fpath: Path) -> tuple[np.ndarray, np.ndarray]:
 # ---------------------------------------------------------------------------
 
 
-def resample_to_matisse_resolution(
-    wl_orig: np.ndarray,
-    spec_orig: np.ndarray,
-    dl_coeffs: list[float],
-    wl_final: np.ndarray,
-    spectral_binning: float,
-    *,
-    kernel_width_px: float = 10.0,
+def _resample_to_matisse_resolution(
+    wav_model: np.ndarray,
+    flux_model: np.ndarray,
+    wav_obs: np.ndarray,
+    size_spec_channel: float,
+    nsigma: int,
 ) -> np.ndarray:
-    """Resample a spectrum to the actual MATISSE spectral resolution.
+    """Resample by weighted bin integration using a wavelength-dependent gaussian kernel (for dense model spectra).
 
-    Steps:
-    1. Build a non-uniform wavelength grid with spacing ∝ Δλ(λ).
-    2. Interpolate the input spectrum onto this grid.
-    3. Convolve with a Gaussian kernel (simulates instrumental LSF).
-    4. Interpolate back onto the final (data) wavelength grid.
-    5. Convolve with a boxcar kernel (spectral binning).
+    For each wavelength of wav_obs, sums the model flux contributions
+    weighted by a wavelength-dependent gaussian kernel, within a window of +- nsigma*sigma around the local wavelength of wav_obs, where sigma is the standard deviation of the gaussian kernel.
 
     Parameters
     ----------
-    wl_orig : np.ndarray
-        Original wavelength grid (µm).
-    spec_orig : np.ndarray
-        Original spectrum values.
-    dl_coeffs : list[float]
-        Polynomial coefficients [c0, c1, c2, c3] for Δλ(λ) via ``polyval``.
-    wl_final : np.ndarray
-        Target wavelength grid (µm) — the MATISSE data grid.
-    spectral_binning : float
-        Spectral binning factor from the reduction recipe.
-    kernel_width_px : float
-        Gaussian kernel width in pixels (default 10).
+    wav_model : np.ndarray
+        Model wavelength grid of the calibrator(same units as *wav_obs*; must be sorted ascending).
+    flux_model : np.ndarray
+        Model spectrum of the calibrator (Jy).
+    wav_obs : np.ndarray
+        Observation wavelength grid (sorted ascending).
+         Model wavelength grid of the calibrator(same units as *wav_obs*; must be sorted ascending).
+    size_spec_channel : float
+        size of a MATISSE spectral channel (in pix).
+    nsigma : int
+        size of the window considered for the gaussian averaging (in unit of sigma of the gaussian kernel).
 
     Returns
     -------
     np.ndarray
-        Resampled spectrum on the ``wl_final`` grid.
+        Resampled flux on the ``wav_obs`` grid (Jy).
     """
-    # 1. Build non-uniform grid with instrumental Δλ spacing
-    min_wl, max_wl = float(np.min(wl_orig)), float(np.max(wl_orig))
-    wl_new: list[float] = [min_wl]
-    wl = min_wl
-    while wl < max_wl:
-        wl += float(polyval(wl, dl_coeffs) / kernel_width_px)
-        wl_new.append(wl)
-    wl_arr = np.array(wl_new)
 
-    # 2. Interpolate onto instrumental grid
-    f_interp = interp1d(wl_orig, spec_orig, kind="cubic", fill_value="extrapolate")
-    spec_new = f_interp(wl_arr)
+    spec_resampled = np.zeros_like(wav_obs, dtype=np.float64)
 
-    # 3. Convolve with Gaussian kernel (instrumental LSF)
-    sigma = kernel_width_px / (2.0 * np.sqrt(2.0 * np.log(2.0)))
-    kernel = Gaussian1DKernel(stddev=sigma)
+    # computation of the wavelength spacing per pixel
+    dlam = np.abs(np.gradient(wav_obs))
+    for i, lam0 in enumerate(wav_obs):
+        # lam0 = lam_out[i] + 0.5*dlam[i]
 
-    # Pad edges to avoid boundary artifacts
-    half_k = int(kernel.dimension / 2.0)
-    if half_k > 0:
-        spec_new[0] = np.nanmedian(spec_new[:half_k])
-        spec_new[-1] = np.nanmedian(spec_new[-half_k:]) if half_k > 0 else spec_new[-1]
-    spec_convolved = convolve(spec_new, kernel, boundary="extend")
+        # Computation of the local gaussian kernel at lam0, corresponding to the local size of a MATISSE spectral channel (in wavelength).
+        fwhm = size_spec_channel * dlam[i]
+        sigma = fwhm / 2.355
 
-    # 4. Interpolate back to data wavelength grid
-    f_final = interp1d(wl_arr, spec_convolved, kind="cubic", fill_value="extrapolate")
-    spec_interp = f_final(wl_final)
+        # Size of the spectral window around lam0 where gaussian-weighted averaging will be performed on flux_model
+        mask = np.abs(wav_model - lam0) < nsigma * sigma
 
-    # 5. Apply spectral binning (boxcar convolution)
-    if spectral_binning > 1:
-        box_kernel = Box1DKernel(spectral_binning)
-        spec_final = convolve(spec_interp, box_kernel, boundary="extend")
-    else:
-        spec_final = spec_interp
+        lam_mask = wav_model[mask]
+        f_mask = flux_model[mask]
+        # Case where we are too close to the edges of the wavelength grid
+        if len(lam_mask) < 5:
+            spec_resampled[i] = np.nan
+            continue
 
-    return np.asarray(spec_final)
+        # Gaussian weighted averaging within the spectral window defined by mask
+        w = np.exp(-0.5 * ((lam_mask - lam0) / sigma) ** 2)
+        w /= np.sum(w)
+        spec_resampled[i] = np.sum(f_mask * w)
+
+    return spec_resampled
 
 
 # ---------------------------------------------------------------------------
@@ -368,12 +347,13 @@ def compute_airmass_correction(
     wmin_sci = float(np.min(wav_sci_m)) * 1e9  # m → nm
     wmax_sci = float(np.max(wav_sci_m)) * 1e9
     margin = 0.1 * (wmax_sci - wmin_sci)
-    dlambda_sci = get_dlambda(hdul_sci)
-
+    #    dlambda_sci = get_dlambda(hdul_sci)
     if "IR-N" in tag_sci:
         detected_band = "N"
+        detector = "AQUARIUS"
     elif "IR-LM" in tag_sci:
         detected_band = "LM"
+        detector = "HAWAII-2RG"
     else:
         detected_band = "unknown"
     logger.info(
@@ -391,7 +371,7 @@ def compute_airmass_correction(
         pwv_sci,
         wmin_sci - margin,
         wmax_sci + margin,
-        wdelta=dlambda_sci,
+        # wdelta=dlambda_sci,
     )
     if not run_skycalc(input_sci, output_sci):
         logger.warning("SkyCalc failed for SCI — returning unit correction.")
@@ -401,7 +381,7 @@ def compute_airmass_correction(
     wmin_cal = float(np.min(wav_cal_m)) * 1e9
     wmax_cal = float(np.max(wav_cal_m)) * 1e9
     margin_cal = 0.1 * (wmax_cal - wmin_cal)
-    dlambda_cal = get_dlambda(hdul_cal)
+    #   dlambda_cal = get_dlambda(hdul_cal)
 
     input_cal = skycalc_dir / f"skycalc_input_cal_{tag_cal}.txt"
     output_cal = skycalc_dir / f"skycalc_output_cal_{tag_cal}.fits"
@@ -411,7 +391,7 @@ def compute_airmass_correction(
         pwv_cal,
         wmin_cal - margin_cal,
         wmax_cal + margin_cal,
-        wdelta=dlambda_cal,
+        # wdelta=dlambda_cal,
     )
     if not run_skycalc(input_cal, output_cal):
         logger.warning("SkyCalc failed for CAL — returning unit correction.")
@@ -420,30 +400,26 @@ def compute_airmass_correction(
     # --- Read transmission spectra ---
     wl_um_sci, trans_sci = read_skycalc_output(output_sci)
     wl_um_cal, trans_cal = read_skycalc_output(output_cal)
-
     # --- Resample to MATISSE resolution ---
-    kernel_width_px = 10.0
+    # size of the spectral window in unit of sigma of the wavelength-dependent gaussian kernel applied in resample_to_matisse_resolution
+    nsigma = 5
 
-    dl_coeffs_sci = get_dl_coeffs(hdul_sci)
-    binning_sci = get_spectral_average(hdul_sci)
-    trans_sci_final = resample_to_matisse_resolution(
+    # Determination of the size of a MATISSE spectral channel (in pix)
+    if "HAWAI" in detector:
+        SIZE_SPEC_CHANNEL = 4.92
+    elif "AQUARIUS" in detector:
+        SIZE_SPEC_CHANNEL = 7.87
+
+    trans_sci_final = _resample_to_matisse_resolution(
         wl_um_sci,
         trans_sci,
-        dl_coeffs_sci,
         wav_sci_m * 1e6,  # m → µm
-        binning_sci,
-        kernel_width_px=kernel_width_px,
+        SIZE_SPEC_CHANNEL,
+        nsigma,
     )
 
-    dl_coeffs_cal = get_dl_coeffs(hdul_cal)
-    binning_cal = get_spectral_average(hdul_cal)
-    trans_cal_final = resample_to_matisse_resolution(
-        wl_um_cal,
-        trans_cal,
-        dl_coeffs_cal,
-        wav_cal_m * 1e6,
-        binning_cal,
-        kernel_width_px=kernel_width_px,
+    trans_cal_final = _resample_to_matisse_resolution(
+        wl_um_cal, trans_cal, wav_cal_m * 1e6, SIZE_SPEC_CHANNEL, nsigma
     )
 
     # --- Correction factor ---

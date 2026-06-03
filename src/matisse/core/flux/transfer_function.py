@@ -46,38 +46,46 @@ def resample_model_spectrum(
     wav_model: np.ndarray,
     flux_model: np.ndarray,
     wav_obs: np.ndarray,
+    detector_type: str,
+    nsigma: int = 5,
 ) -> np.ndarray:
-    """Resample a calibrator model spectrum onto the observation wavelength grid.
+    """Resample a calibrator model spectrum onto the MATISSE wavelength grid.
 
     Two strategies are used depending on the relative sampling:
 
     - If the model is **much denser** than the observation (>2× more points
-      in the overlap region), a **bin-weighted integration** is performed
-      to properly average the model within each observation channel.
+      in the overlap region), a wavelength-dependent gaussin kernel is computed and applied to properly average the model within each MATISSE spectral channel.
     - Otherwise, a **cubic interpolation** is used.
 
     Parameters
     ----------
     wav_model : np.ndarray
-        Model wavelength grid (same units as *wav_obs*; must be sorted ascending).
+        Model wavelength grid of the calibrator(same units as *wav_obs*; must be sorted ascending).
     flux_model : np.ndarray
-        Model flux array (Jy).
+        Model spectrum of the calibrator (Jy).
     wav_obs : np.ndarray
         Observation wavelength grid (sorted ascending).
+         Model wavelength grid of the calibrator(same units as *wav_obs*; must be sorted ascending).
+    detector_type : str
+        Detector used for the observations ("HAWAII-2RG" or "AQUARIUS").
+    nsigma : int
+        size of the window considered for the gaussian averaging (in unit of sigma of the gaussian kernel).
 
     Returns
     -------
     np.ndarray
         Resampled flux on the ``wav_obs`` grid (Jy).
     """
-    # Build bin edges for the model grid
-    wav_bin_lower_model, wav_bin_upper_model, d_wav_model = _compute_bin_edges(
-        wav_model
-    )
 
     # Check sampling ratio in the overlap region
     overlap_mask = (wav_model > np.nanmin(wav_obs)) & (wav_model < np.nanmax(wav_obs))
     n_model_in_range = int(np.nansum(overlap_mask))
+
+    # Get the size of a spectral channel (in pix) depending on the detector (spectral band)
+    if "HAWAII" in detector_type:
+        SIZE_SPEC_CHANNEL = 4.92
+    else:
+        SIZE_SPEC_CHANNEL = 7.87
 
     if 2.0 * len(wav_obs) < n_model_in_range:
         # Model is much denser → bin-weighted integration
@@ -86,13 +94,12 @@ def resample_model_spectrum(
             n_model_in_range,
             len(wav_obs),
         )
-        return _resample_by_bin_integration(
+        return _resample_by_gaussian_kernel(
             wav_obs,
             wav_model,
             flux_model,
-            wav_bin_lower_model,
-            wav_bin_upper_model,
-            d_wav_model,
+            SIZE_SPEC_CHANNEL,
+            nsigma,
         )
     else:
         # Comparable or sparser → cubic interpolation
@@ -120,6 +127,50 @@ def _compute_bin_edges(
     wh = np.concatenate((wav, [wav[-1] + (wav[-1] - wav[-2])]))
     wm = (wh + wl) / 2.0
     return wm[:-1], wm[1:], wm[1:] - wm[:-1]
+
+
+def _resample_by_gaussian_kernel(
+    wav_obs: np.ndarray,
+    wav_model: np.ndarray,
+    flux_model: np.ndarray,
+    size_spec_channel: float,
+    nsigma: int,
+) -> np.ndarray:
+    """Resample by weighted bin integration using a wavelength-dependent gaussian kernel (for dense model spectra).
+
+    For each wavelength of wav_obs, sums the model flux contributions
+    weighted by a wavelength-dependent gaussian kernel, within a window of +- nsigma*sigma around the local wavelength of wav_obs, where sigma is the standard deviation of the gaussian kernel.
+    """
+
+    spec_resampled = np.zeros_like(wav_obs, dtype=np.float64)
+
+    # computation of the wavelength spacing per pixel
+    dlam = np.abs(np.gradient(wav_obs))
+
+    for i, lam0 in enumerate(wav_obs):
+        # lam0 = lam_out[i] + 0.5*dlam[i]
+
+        # Computation of the local gaussian kernel at lam0, corresponding to the local size of a MATISSE spectral channel (in wavelength).
+        fwhm = size_spec_channel * dlam[i]
+        sigma = fwhm / 2.355
+
+        # Size of the spectral window around lam0 where gaussian-weighted averaging will be performed on flux_model
+        mask = np.abs(wav_model - lam0) < nsigma * sigma
+
+        lam_mask = wav_model[mask]
+        f_mask = flux_model[mask]
+
+        # Case where we are too close to the edges of the wavelength grid
+        if len(lam_mask) < 5:
+            spec_resampled[i] = np.nan
+            continue
+
+        # Gaussian weighted averaging within the spectral window defined by mask
+        w = np.exp(-0.5 * ((lam_mask - lam0) / sigma) ** 2)
+        w /= np.sum(w)
+        spec_resampled[i] = np.sum(f_mask * w)
+
+    return spec_resampled
 
 
 def _resample_by_bin_integration(
