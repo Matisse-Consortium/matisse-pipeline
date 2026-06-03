@@ -126,9 +126,8 @@ def build_raw_estimates_params(
                 "[bold cyan]vfactor[/bold cyan] and [bold cyan]pfactor[/bold cyan] corrections disabled for L/M band."
             )
 
-        # Only add --filter if mode is not "none"
-        if filter_mode.lower() != "none":
-            params.append(f"--filter={filter_mode}")
+        # Always pass --filter to override recipe default (filters are applied by default)
+        params.append(f"--filter={filter_mode}")
 
         if filter_baseline is not None:
             params.append(f"--filterBaseline={filter_baseline}")
