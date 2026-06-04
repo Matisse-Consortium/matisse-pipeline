@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.8.0 (2026-06-04)
+
+### Feat
+
+- improvement of the resampling of calibrators and skycalc spectra + update of the web link to the STARSFLUX spectra
+- force cal 2 sci for the TF calibration
+
+### Fix
+
+- filter are now correctly applied (none for no filtering)
+
+### Refactor
+
+- removal of the old unused implementation of the resampling function in airmass.py and transfer_function.py + renaming in capital letters of the hard-coded SIZE_SPEC_CHANNEL constant.
+- correct variable type in the declaration of _resample_to_matisse_resolution (in airmass.py) and of resample_model_spectrum (in transfer_function.py)
+
 ## v0.7.0 (2026-05-19)
 
 ### Feat
