@@ -202,8 +202,8 @@ Corrections applied to the squared visibilities (VIS2):
 
 | Option&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Description |
 | --- | --- |
-| `--vfactor --no-vfactor` | Enable/disable the *vfactor* correction (on by default). |
-| `--pfactor --no-pfactor` | Enable/disable the *pfactor* correction (on by default). |
+| `--vfactor / --no-vfactor` | Enable/disable the *vfactor* correction (on by default). |
+| `--pfactor / --no-pfactor` | Enable/disable the *pfactor* correction (on by default). |
 | `--filter-mode vf,pf,jp` | Frame-selection filters to apply: `vf` (vfactor), `pf` (pfactor), `jp` (fringe jump), or `none` to disable. Default `vf,pf,jp`. Rejects bad frames to improve quality. |
 | `--filter-baseline N` | Filter your data using only one baseline (index **1–6**). To use several baselines, run the reduction once per index (into different `--result-dir`). |
 
