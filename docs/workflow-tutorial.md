@@ -98,7 +98,7 @@ The recommended end-to-end flow is:
 ```mermaid
 flowchart LR
     RAW[("📥 Raw FITS<br/>(one night)")]
-    RED["🛠️ matisse reduce<br/><i>+ auto-format</i>"]
+    RED["🛠️ matisse reduce<br/>"]
     OIFITS[("📦 reduced_OIFITS/<br/>uncalibrated")]
 
     CAL["🎯 matisse calibrate<br/><i>transfer function</i>"]
@@ -190,7 +190,7 @@ unless you pass `--overwrite`.
 
 #### Selecting what to reduce
 
-| Option | Description |
+| Option&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Description |
 | --- | --- |
 | `--resol LOW\|MED\|HIGH\|ALL` | Spectral resolution. Default `ALL` (reduce every resolution found). |
 | `--skipL` / `--skipN` | Skip the L/M or the N band entirely. |
@@ -200,16 +200,16 @@ unless you pass `--overwrite`.
 
 Corrections applied to the squared visibilities (VIS2):
 
-| Option | Description |
+| Option&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Description |
 | --- | --- |
-| `--vfactor / --no-vfactor` | Enable/disable the *vfactor* correction (on by default). |
-| `--pfactor / --no-pfactor` | Enable/disable the *pfactor* correction (on by default). |
+| `--vfactor --no-vfactor` | Enable/disable the *vfactor* correction (on by default). |
+| `--pfactor --no-pfactor` | Enable/disable the *pfactor* correction (on by default). |
 | `--filter-mode vf,pf,jp` | Frame-selection filters to apply: `vf` (vfactor), `pf` (pfactor), `jp` (fringe jump), or `none` to disable. Default `vf,pf,jp`. Rejects bad frames to improve quality. |
 | `--filter-baseline N` | Filter your data using only one baseline (index **1–6**). To use several baselines, run the reduction once per index (into different `--result-dir`). |
 
 #### Recipe tuning (rarely changed)
 
-| Option | Description |
+| Option&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Description |
 | --- | --- |
 | `--spectral-average N` | Spectral channels to average for SNR (default `-1` = auto: 7 for N, 5 for L/M). *(Formerly `--spectral-binning`.)* |
 | `--paramL` / `--paramN` | Raw recipe parameter strings for each band. |
@@ -217,14 +217,14 @@ Corrections applied to the squared visibilities (VIS2):
 
 #### Inputs / outputs
 
-| Option | Description |
+| Option&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Description |
 | --- | --- |
 | `--calib-dir` / `-c` | Calibration archive directory (default: same as raw). |
 | `--overwrite` | Recompute and replace existing results. |
 
 #### Dry checks (no processing)
 
-| Option | Description |
+| Option&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Description |
 | --- | --- |
 | `--check-files` | Inspect the raw FITS files and their headers (inventory) without running anything. |
 | `--check-blocks` | List the reduction blocks that *would* be executed. |
@@ -233,7 +233,7 @@ Corrections applied to the squared visibilities (VIS2):
 
 #### Logging
 
-| Option | Description |
+| Option&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Description |
 | --- | --- |
 | `--verbose` / `-v` | Detailed output. |
 | `--save-report` | Save the pipeline summary tables as an SVG report in the result directory. |
@@ -276,7 +276,7 @@ This is the **transfer-function (visibility) calibration**. It:
 
 ### ⚙️ Calibration options
 
-| Option | Description |
+| Option&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Description |
 | --- | --- |
 | `--result-dir` / `-r` | Output directory (default: `calibrated/`). |
 | `--timespan` / `-t` | Maximum science↔calibrator time separation, **in hours** (default `1`). *(Older versions used days.)* |
@@ -314,7 +314,7 @@ matisse flux_calibrate -d /data/output/calibrated \
 
 ### ⚙️ Flux-calibration options
 
-| Option | Description |
+| Option&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Description |
 | --- | --- |
 | `--data-dir` / `-d` | Directory with the input OIFITS files. |
 | `--result-dir` / `-r` | Output directory (default: `<datadir>/calflux` or `<datadir>/calcorrflux`, depending on mode). |
@@ -346,7 +346,7 @@ matisse bcd compute /data/night1_OIFITS /data/night2_OIFITS \
 
 Main options:
 
-| Option | Description |
+| Option&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Description |
 | --- | --- |
 | `--bcd-mode IN_IN\|OUT_IN\|IN_OUT\|ALL` | BCD configuration to compute (default `IN_IN`). |
 | `--band LM\|N`, `--resol LOW\|MED\|HIGH` | Band and spectral resolution. |
@@ -367,7 +367,7 @@ matisse bcd apply /data/output/reduced_OIFITS --merge
 The corrections directory is **optional** — if omitted, a bundled master
 calibration is used. Main options:
 
-| Option | Description |
+| Option&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Description |
 | --- | --- |
 | `--merge` / `-m` | Merge the corrected BCD modes into a single OIFITS file. |
 | `--split-chopping` | When merging, keep chopped and unchopped files separate. |
