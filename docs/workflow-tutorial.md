@@ -499,4 +499,4 @@ What you get:
 From there you can optionally run `matisse flux_calibrate` for spectrophotometric
 calibration (in `reduced_OIFITS`), `matisse bcd ...` for BCD corrections or merge between BCD, and `matisse show` to inspect your results.
 
-> **NOTE**: The BCD corrections are usually treated as an expert tool to analyse intermediate data products and explore more challenging datasets. The *Magic Numbers* are generally well corrected by applying the standard transfer function (`matisse calibrate`). Feel free to try the provided tool, but do not hesitate to contact the VLTI centre or open a GitHub issue if you require assistance.
+> **NOTE**: The BCD corrections are usually treated as an expert tool to analyse intermediate data products and explore more challenging datasets. The *Magic Numbers* are generally well corrected by applying the standard transfer function (`matisse calibrate`) and are optimised once the BCD positions are merged. Feel free to try the provided tool, but do not hesitate to contact the VLTI centre or open a GitHub issue if you require assistance.
