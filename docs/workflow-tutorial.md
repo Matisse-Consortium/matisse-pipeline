@@ -202,10 +202,10 @@ Corrections applied to the squared visibilities (VIS2):
 
 | Option&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Description |
 | --- | --- |
-| `--vfactor / --no-vfactor` | Enable/disable the *vfactor* correction (on by default). |
-| `--pfactor / --no-pfactor` | Enable/disable the *pfactor* correction (on by default). |
+| `--vfactor --no-vfactor` | Enable/disable the *vfactor* correction (on by default). |
+| `--pfactor --no-pfactor` | Enable/disable the *pfactor* correction (on by default). |
 | `--filter-mode vf,pf,jp` | Frame-selection filters to apply: `vf` (vfactor), `pf` (pfactor), `jp` (fringe jump), or `none` to disable. Default `vf,pf,jp`. Rejects bad frames to improve quality. |
-| `--filter-baseline N` | Filter your data using only one baseline (index **1–6**). To use several baselines, run the reduction once per index (into different `--result-dir`). |
+| `--filter-baseline N` | Filter your data using only one baseline (index **1–6**). To use several baselines, run the reduction once per index (into different `--result-dir`). **Expert user only** |
 
 #### Recipe tuning (rarely changed)
 
@@ -340,7 +340,7 @@ apply the corresponding corrections (often called *magic numbers*).
 ### Compute BCD magic numbers
 
 ```bash
-matisse bcd compute /data/night1_OIFITS /data/night2_OIFITS \
+matisse bcd compute /data/night1_OIFITS \
   --bcd-mode ALL --band LM --resol LOW --plot
 ```
 
@@ -350,6 +350,7 @@ Main options:
 | --- | --- |
 | `--bcd-mode IN_IN\|OUT_IN\|IN_OUT\|ALL` | BCD configuration to compute (default `IN_IN`). |
 | `--band LM\|N`, `--resol LOW\|MED\|HIGH` | Band and spectral resolution. |
+| `--output-dir DIR` | Output directory for correction files (default bcd_calibration_results/). |
 | `--wavelength-range 3.3 3.8` | Averaging window, in microns. |
 | `--poly-order N` | Order of the polynomial fitted to the corrections. |
 | `--tau0-min MS` | Reject files below this coherence time (ms). |
@@ -361,11 +362,13 @@ Main options:
 ### Apply BCD corrections
 
 ```bash
-matisse bcd apply /data/output/reduced_OIFITS --merge
+matisse bcd apply /data/output/reduced_OIFITS correction_dir/ --merge
 ```
 
-The corrections directory is **optional** — if omitted, a bundled master
-calibration is used. Main options:
+The corrections directory (`correction_dir`) is **optional** — if omitted, a bundled master
+calibration is used. `correction_dir` is usually refering to `--output-dir` adopted in the previous step (`bcd compute`, bcd_calibration_results/ by default).
+
+Main options:
 
 | Option&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Description |
 | --- | --- |
@@ -379,11 +382,15 @@ calibration is used. Main options:
 ### Other BCD tools
 
 - Remove BCD effects (prepare files for later steps such as `genoca`):
-  `matisse bcd remove /data/output/reduced_OIFITS --band LM`
+  `matisse bcd remove reduced_OIFITS`. All files will be renamed with the suffix _noBCD and the BCD ordering will follow
+ the OUT_OUT convention.
 - Compare BCD modes across each template start:
   `matisse bcd compare /data/output/reduced_OIFITS`
 - Merge BCD modes only:
   `matisse bcd merge /data/output/reduced_OIFITS`
+
+> [!TIP]
+> More details can be found in the helper of the CLI `--help`.
 
 ---
 
@@ -479,7 +486,7 @@ The shortest practical path from raw FITS to calibrated OIFITS:
 
 ```bash
 matisse doctor      # Sanity check
-matisse reduce -n 4 # From within the datadir
+matisse reduce -n 4 # From within the DATA repository (--data-dir)
 matisse calibrate   # From within reduced_OIFITS/
 ```
 
@@ -491,3 +498,5 @@ What you get:
 
 From there you can optionally run `matisse flux_calibrate` for spectrophotometric
 calibration (in `reduced_OIFITS`), `matisse bcd ...` for BCD corrections or merge between BCD, and `matisse show` to inspect your results.
+
+> **NOTE**: The BCD corrections are usually treated as an expert tool to analyse intermediate data products and explore more challenging datasets. The *Magic Numbers* are generally well corrected by applying the standard transfer function (`matisse calibrate`). Feel free to try the provided tool, but do not hesitate to contact the VLTI centre or open a GitHub issue if you require assistance.
