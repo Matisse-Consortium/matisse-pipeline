@@ -37,8 +37,8 @@ throughout this guide:
 | **Transfer function** | The combined instrumental + atmospheric response, measured on the calibrator and divided out of the science data during calibration. |
 | **Visibility (V²) & closure phase** | The core interferometric observables: how "contrasted" the fringes are (related to source size) and a phase quantity robust to atmospheric noise (related to source asymmetry). |
 | **Baseline** | One pair of telescopes. The 4 VLTI telescopes give 6 baselines (and 4 closure-phase triangles). |
-| **L/M and N bands** | The two infrared wavelength regions MATISSE records, on two separate detectors. "LM" is the shorter-wavelength band, "N" the longer one. |
-| **BCD** (Beam Commuting Device) | An optical component that swaps the VLTI beams. Combining the different BCD positions improves the closure phase and signal-to-noise. |
+| **L/M and N bands** | The two infrared wavelength regions MATISSE records, on two separate detectors. "LM" is the shorter-wavelength band, "N" the longer one. In the **N band** MATISSE does **not** measure absolute (total-flux) visibilities — only *correlated fluxes* stored in `VISAMP` — so the `OI_FLUX` table is empty there (see the note in §6). |
+| **BCD** (Beam Commuting Device) | An optical component that swaps the VLTI beams. Combining the different BCD positions improves the differential phase, closure phase and signal-to-noise ratio. |
 | **esorex / recipes** | `esorex` is ESO's command-line engine that runs the low-level *recipes* (`mat_*` programs). The `matisse` CLI orchestrates which recipes run, in which order, on which files — so you don't have to. |
 
 ---
@@ -300,6 +300,18 @@ This is the **transfer-function (visibility) calibration**. It:
 > purpose, different products: use it when you care about the
 > spectral/photometric content, not just the visibilities.
 
+<!-- markdownlint-disable-next-line MD028 -->
+
+> [!IMPORTANT]
+> **LM vs N band — what is actually measured.** In the **LM band** MATISSE
+> records *absolute* (total-flux) visibilities, so both the total flux
+> (`OI_FLUX`) and the visibilities (`OI_VIS2` / `VISAMP`) are available. In
+> the **N band**, however, there is **no absolute visibility**: only the
+> *correlated flux* is measured, and it lives in the `VISAMP` column of
+> `OI_VIS`. Consequently the **`OI_FLUX` table is empty in the N band**.
+> In practice this means `--mode flux` (total flux) is only meaningful for LM;
+> for N you should use `--mode corrflux`.
+
 This step is normally run **on the calibrated data** (the output of
 `matisse calibrate`), so point `--data-dir` at your `calibrated/` folder:
 
@@ -333,9 +345,12 @@ matisse flux_calibrate -d /data/output/calibrated \
 ## 7. Optional — BCD workflow
 
 The **BCD** (Beam Commuting Device) swaps the VLTI beams between exposures.
-Combining the different BCD positions (IN_IN, OUT_IN, IN_OUT, OUT_OUT) yields a
-better closure-phase correction and improved SNR. These commands compute and
-apply the corresponding corrections (often called *magic numbers*).
+One of the reasons it was designed is precisely to clean up the **phase**
+observables: combining the different BCD positions (IN_IN, OUT_IN, IN_OUT,
+OUT_OUT) cancels instrumental phase offsets, yielding a better **differential
+phase** and **closure-phase** correction as well as improved SNR. These
+commands compute and apply the corresponding corrections (often called
+*magic numbers*).
 
 ### Compute BCD magic numbers
 
