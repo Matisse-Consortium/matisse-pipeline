@@ -19,7 +19,7 @@
 
 ---
 
-This tutorial walks you through reducing MATISSE data with the `matisse`
+This tutorial walks you through reducing [MATISSE](https://www.eso.org/sci/facilities/paranal/instruments/matisse.html) data with the `matisse`
 command-line interface (CLI), step by step. It is written for newcomers: you do
 **not** need to be an expert in the instrument, in interferometric data
 reduction, or in Python tooling to follow it.
@@ -37,7 +37,7 @@ throughout this guide:
 | **Transfer function** | The combined instrumental + atmospheric response, measured on the calibrator and divided out of the science data during calibration. |
 | **Visibility (V²) & closure phase** | The core interferometric observables: how "contrasted" the fringes are (related to source size) and a phase quantity robust to atmospheric noise (related to source asymmetry). |
 | **Baseline** | One pair of telescopes. The 4 VLTI telescopes give 6 baselines (and 4 closure-phase triangles). |
-| **L/M and N bands** | The two infrared wavelength regions MATISSE records, on two separate detectors. "LM" is the shorter-wavelength band, "N" the longer one. In the **N band** MATISSE does **not** measure absolute (total-flux) visibilities — only *correlated fluxes* stored in `VISAMP` — so the `OI_FLUX` table is empty there (see the note in §6). |
+| **L/M and N bands** | The two infrared wavelength regions MATISSE records, on two separate detectors. "LM" is the shorter-wavelength band (3-5 µm), "N" the longer one (8-13 µm). |
 | **BCD** (Beam Commuting Device) | An optical component that swaps the VLTI beams. Combining the different BCD positions improves the differential phase, closure phase and signal-to-noise ratio. |
 | **esorex / recipes** | `esorex` is ESO's command-line engine that runs the low-level *recipes* (`mat_*` programs). The `matisse` CLI orchestrates which recipes run, in which order, on which files — so you don't have to. |
 
@@ -58,7 +58,7 @@ package into it:
 ```bash
 uv venv --python 3.14 my-matisse-env     # create an isolated environment
 source my-matisse-env/bin/activate       # activate it (do this each session)
-uv pip install matisse                    # install the CLI inside it
+uv pip install matisse                   # install the CLI inside it
 ```
 
 Once installed and activated, the `matisse` command is available. Python 3.10+
