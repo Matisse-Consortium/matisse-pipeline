@@ -329,7 +329,7 @@ def apply_bcd_corrections(
     split_chopping: bool = True,
     plot: bool = True,
     verbose: bool = False,
-    sub_band: str | None = None,
+    sub_band: str | Sequence[float] | None = None,
 ) -> None:
     """Apply BCD polynomial corrections for all BCD positions.
 
@@ -358,8 +358,10 @@ def apply_bcd_corrections(
         Generate correction plots. Default is True.
     verbose : bool, optional
         Show detailed metrics tables for each file. Default is False.
-    sub_band : {"L", "M", "N"} or None, optional
-        Sub-band to use when computing quality metrics. Default is None (full band).
+    sub_band : {"L", "M", "N"} or sequence of 2 floats or None, optional
+        Sub-band to use when computing quality metrics. Pass two values
+        ``[wl_low_um, wl_high_um]`` for an explicit wavelength range in microns.
+        Default is None (full band).
     """
 
     bases = _find_calibrator_filename_bases(data_dir, chopping=chopping)

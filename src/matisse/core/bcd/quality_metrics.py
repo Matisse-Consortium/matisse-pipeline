@@ -1,3 +1,5 @@
+from collections.abc import Sequence
+
 import numpy as np
 import pandas as pd
 
@@ -14,8 +16,8 @@ _RATIO_WARN = 2.0  # ≤ 2.0: yellow (acceptable)
 
 # Wavelength ranges (µm) for each sub-band
 _SUBBAND_RANGES: dict[str, tuple[float, float]] = {
-    "L": (2.8, 4.2),
-    "M": (4.5, 5.0),
+    "L": (3.2, 4.0),
+    "M": (4.6, 4.8),
     "N": (8.0, 13.0),
 }
 
@@ -24,7 +26,7 @@ def compute_correction_metrics(
     dict_corr,
     dict_raw,
     corrections_dir,
-    sub_band: str | None = None,
+    sub_band: str | Sequence[float] | None = None,
 ):
     """Compute quality metrics for the BCD correction.
 
@@ -44,8 +46,9 @@ def compute_correction_metrics(
         Uncorrected (raw) data dictionary.
     corrections_dir : Path
         Directory containing the CSV correction files.
-    sub_band : {"L", "M", "N"} or None, optional
-        Restrict computation to a specific sub-band wavelength range.
+    sub_band : {"L", "M", "N"} or sequence of 2 floats or None, optional
+        Restrict computation to a specific sub-band wavelength range. Pass two
+        values ``[wl_low_um, wl_high_um]`` for an explicit wavelength range in microns.
         When *None* (default) the full range from the CSV files is used.
 
     Returns
@@ -65,11 +68,23 @@ def compute_correction_metrics(
 
     # Optionally restrict to a specific sub-band
     if sub_band is not None:
-        if sub_band not in _SUBBAND_RANGES:
+        if isinstance(sub_band, str):
+            if sub_band not in _SUBBAND_RANGES:
+                raise ValueError(
+                    f"Unknown sub_band '{sub_band}'. Choose from {list(_SUBBAND_RANGES)}."
+                )
+            wl_lo, wl_hi = _SUBBAND_RANGES[sub_band]
+        else:
+            if len(sub_band) != 2:
+                raise ValueError(
+                    "sub_band range must contain exactly two values: [wl_low_um, wl_high_um]."
+                )
+            wl_lo, wl_hi = float(sub_band[0]), float(sub_band[1])
+
+        if wl_hi <= wl_lo:
             raise ValueError(
-                f"Unknown sub_band '{sub_band}'. Choose from {list(_SUBBAND_RANGES)}."
+                f"Invalid sub_band range [{wl_lo}, {wl_hi}] um: upper bound must be greater than lower bound."
             )
-        wl_lo, wl_hi = _SUBBAND_RANGES[sub_band]
         band_mask &= (wl >= wl_lo) & (wl <= wl_hi)
 
     rows = []
