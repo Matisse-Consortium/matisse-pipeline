@@ -9,7 +9,7 @@ from .io_utils import load_bcd_corrections
 # Baselines unaffected by BCD swaps (same position in all modes)
 _BCD_UNAFFECTED = {0, 1}
 
-# Quality thresholds for σ_BCD / σ_ref ratio
+# Quality thresholds for σ_BCD / ε_OUT-OUT ratio
 _RATIO_GOOD = 1.0  # ≤ 1.0: green (noise-limited)
 _RATIO_WARN = 2.0  # ≤ 2.0: yellow (acceptable)
 # > 2.0: red (poor correction)
@@ -35,7 +35,7 @@ def compute_correction_metrics(
       - mean_std_corr   : mean σ_BCD after correction
       - improvement      : ratio σ_uncorr / σ_corr
       - mean_err_ref     : mean VIS2ERR of OUT_OUT
-      - ratio_std_err    : σ_BCD(corr) / σ_OUT-OUT  (ideally ≤ 1)
+      - ratio_std_err    : σ_BCD(corr) / ε_OUT-OUT  (ideally ≤ 1)
       - mean_rel_resid   : mean |V2_corr - V2_ref| / V2_ref per BCD mode
 
     Parameters
@@ -129,8 +129,8 @@ def compute_correction_metrics(
                 "improvement": mean_std_raw / mean_std_corr
                 if mean_std_corr > 0
                 else np.inf,
-                "σ_OUT-OUT": mean_err,
-                "σ_BCD/σ_ref": mean_std_corr / mean_err if mean_err > 0 else np.inf,
+                "ε_OUT-OUT": mean_err,
+                "σ_BCD/ε_OUT-OUT": mean_std_corr / mean_err if mean_err > 0 else np.inf,
                 "mean_rel_resid": np.mean(rel_resids),
             }
         )
@@ -159,17 +159,17 @@ def print_correction_metrics(df_metrics):
     table.add_column("σ_BCD uncorr", justify="right")
     table.add_column("σ_BCD corr", justify="right")
     table.add_column("Improvement", justify="right")
-    table.add_column("σ_OUT-OUT", justify="right")
-    table.add_column("σ_BCD/σ_ref", justify="right")
+    table.add_column("ε_OUT-OUT", justify="right")
+    table.add_column("σ_BCD/ε_OUT-OUT", justify="right")
     table.add_column("Rel. Resid.", justify="right")
     table.add_column("Status", justify="center")
 
     for _, row in df_metrics.iterrows():
-        ratio = row["σ_BCD/σ_ref"]
+        ratio = row["σ_BCD/ε_OUT-OUT"]
         improvement = row["improvement"]
         affected = row["affected"]
 
-        # Color for σ_BCD/σ_ref (always shown)
+        # Color for σ_BCD/ε_OUT-OUT (always shown)
         if ratio <= _RATIO_GOOD:
             ratio_style = "bold green"
             status = Text("✓ GOOD", style="bold green")
@@ -197,7 +197,7 @@ def print_correction_metrics(df_metrics):
             f"{row['σ_BCD_uncorr']:.4f}",
             f"{row['σ_BCD_corr']:.4f}",
             imp_cell,
-            f"{row['σ_OUT-OUT']:.4f}",
+            f"{row['ε_OUT-OUT']:.4f}",
             Text(f"{ratio:.2f}", style=ratio_style),
             f"{row['mean_rel_resid']:.4f}",
             status,
@@ -207,7 +207,7 @@ def print_correction_metrics(df_metrics):
     console.print(table)
     console.print("  [dim]improvement = σ_uncorr / σ_corr  (>1 = better)[/dim]")
     console.print(
-        "  [dim]σ_BCD/σ_ref = σ_BCD(corr) / σ_OUT-OUT  "
+        "  [dim]σ_BCD/ε_OUT-OUT = σ_BCD(corr) / ε_OUT-OUT  "
         f"([green]≤{_RATIO_GOOD:.0f} good[/green], "
         f"[yellow]≤{_RATIO_WARN:.0f} fair[/yellow], "
         f"[red]>{_RATIO_WARN:.0f} poor[/red])[/dim]"

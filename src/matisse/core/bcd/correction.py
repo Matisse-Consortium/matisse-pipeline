@@ -444,11 +444,11 @@ def apply_bcd_corrections(
             console.rule(f"[bold cyan]{filename_base}[/bold cyan]")
             print_correction_metrics(df_metrics)
 
-        mean_ratio = np.mean(df_metrics["σ_BCD/σ_ref"][2:])
+        mean_ratio = np.mean(df_metrics["σ_BCD/ε_OUT-OUT"][2:])
 
         if verbose:
             log.info(
-                f"Mean ratio of σ_BCD/σ_ref (excluding unaffected baselines): {mean_ratio:.3f}"
+                f"Mean ratio of σ_BCD/ε_OUT-OUT (excluding unaffected baselines): {mean_ratio:.3f}"
             )
 
         is_recommended = mean_ratio <= 1.0
@@ -497,7 +497,7 @@ def apply_bcd_corrections(
         console.rule("[bold]BCD Correction Summary[/bold]")
         table = Table(show_header=True, header_style="bold magenta")
         table.add_column("File", style="cyan", no_wrap=False)
-        table.add_column("Mean σ_BCD/σ_ref", justify="right")
+        table.add_column("Mean σ_BCD/ε_OUT-OUT", justify="right")
         table.add_column("Quality", justify="center")
         table.add_column("Merge", justify="center")
 
