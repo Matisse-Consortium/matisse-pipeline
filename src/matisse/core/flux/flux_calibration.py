@@ -24,7 +24,10 @@ import numpy as np
 from astropy.io import fits
 
 from matisse.core.flux.airmass import compute_airmass_correction
-from matisse.core.flux.calibrator_spectrum import lookup_calibrator_spectrum
+from matisse.core.flux.calibrator_spectrum import (
+    CalibratorSpectrum,
+    lookup_calibrator_spectrum,
+)
 from matisse.core.flux.databases import get_cal_databases_dir
 from matisse.core.flux.diagnostics import (
     plot_airmass_correction,
@@ -167,6 +170,11 @@ def discover_oifits_files(
     Files are matched by filename pattern and the ``HIERARCH ESO PRO CATG``
     header keyword when no explicit calibrator name is given.
 
+    Calibrator files are searched in *input_dir* **and** its parent directory,
+    so that the function works correctly when science files live in a
+    sub-directory (e.g. ``calibrated/``) while calibrator files are stored one
+    level up alongside raw data.
+
     Parameters
     ----------
     input_dir : Path
@@ -185,9 +193,15 @@ def discover_oifits_files(
         Sorted lists of (science_files, calibrator_files).
     """
     band_tag = f"IR-{band}"
-    abs_dir = str(input_dir.resolve()) + "/"
+    resolved_dir = input_dir.resolve()
+    abs_dir = str(resolved_dir) + "/"
 
-    sci_pattern = f"{abs_dir}*{sci_name}*_{band_tag}*Chop*.fits"
+    # Also search the parent directory for calibrators (common when calibrating
+    # from a sub-directory such as 'calibrated/', while raw calibrator files
+    # live one level up).
+    search_dirs = [abs_dir, str(resolved_dir.parent) + "/"]
+
+    sci_pattern = f"{abs_dir}*{sci_name}*_{band_tag}*hop*.fits"
     # In case of sci_name not specified, we want to consider all files as potential science targets
     sci_paths = []
     for fpath in sorted(glob.glob(sci_pattern)):
@@ -197,19 +211,39 @@ def discover_oifits_files(
                 sci_paths.append(Path(fpath))
 
     if cal_name:
-        cal_pattern = f"{abs_dir}*{cal_name}*_{band_tag}*Chop*.fits"
-        cal_paths = [Path(p) for p in sorted(glob.glob(cal_pattern))]
+        cal_paths_set: set[Path] = set()
+        for search_dir in search_dirs:
+            cal_pattern = f"{search_dir}*{cal_name}*_{band_tag}*hop*.fits"
+            for fpath in sorted(glob.glob(cal_pattern)):
+                cal_paths_set.add(Path(fpath))
+        cal_paths = sorted(cal_paths_set)
+        if any(p.parent != resolved_dir for p in cal_paths):
+            logger.info(
+                "Some calibrator files found in parent directory: %s",
+                resolved_dir.parent,
+            )
     else:
         logger.info(
             "No calibrator name specified – selecting closest calibrator in time."
         )
-        all_pattern = f"{abs_dir}*_{band_tag}*Chop*.fits"
         cal_paths = []
-        for fpath in sorted(glob.glob(all_pattern)):
-            with fits.open(fpath) as hdu:
-                catg = hdu[0].header.get("HIERARCH ESO PRO CATG", "")
-                if catg == "CALIB_RAW_INT":
-                    cal_paths.append(Path(fpath))
+        seen: set[Path] = set()
+        for search_dir in search_dirs:
+            all_pattern = f"{search_dir}*_{band_tag}*hop*.fits"
+            for fpath in sorted(glob.glob(all_pattern)):
+                p = Path(fpath)
+                if p in seen:
+                    continue
+                seen.add(p)
+                with fits.open(fpath) as hdu:
+                    catg = hdu[0].header.get("HIERARCH ESO PRO CATG", "")
+                    if catg == "CALIB_RAW_INT":
+                        cal_paths.append(p)
+        if any(p.parent != resolved_dir for p in cal_paths):
+            logger.info(
+                "Some calibrator files found in parent directory: %s",
+                resolved_dir.parent,
+            )
 
     sci_infos = sorted(
         [_extract_file_info(p, band) for p in sci_paths],
@@ -331,6 +365,7 @@ def calibrate_flux(
     spectral_features: bool = False,
     fig_dir: Path | None = None,
     internal_cont: int = 0,
+    cal_spectrum: CalibratorSpectrum | None = None,
 ) -> int:
     """Apply spectrophotometric calibration to a single SCI/CAL pair.
 
@@ -469,16 +504,17 @@ def calibrate_flux(
         _close_all(hdul_sci, hdul_cal, hdul_out, output_path)
         return 5
 
-    # 5. Look up calibrator model spectrum
-    cal_db_paths = sorted(glob.glob(str(cal_databases_dir / "*.fits")))
-    cal_spectrum = lookup_calibrator_spectrum(
-        cal_name,
-        ra_cal,
-        dec_cal,
-        cal_database_paths=[Path(p) for p in cal_db_paths],
-        match_radius=match_radius,
-        band=band,
-    )
+    # 5. Look up calibrator model spectrum (use pre-fetched if available)
+    if cal_spectrum is None:
+        cal_db_paths = sorted(glob.glob(str(cal_databases_dir / "*.fits")))
+        cal_spectrum = lookup_calibrator_spectrum(
+            cal_name,
+            ra_cal,
+            dec_cal,
+            cal_database_paths=[Path(p) for p in cal_db_paths],
+            match_radius=match_radius,
+            band=band,
+        )
 
     if cal_spectrum is None:
         logger.error("Calibrator '%s' not found in any database.", cal_name)
@@ -698,6 +734,33 @@ def run_flux_calibration(config: FluxCalibrationConfig) -> None:
     # Match SCI ↔ CAL
     pairs = match_sci_cal(sci_files, cal_files, timespan_hours=config.timespan)
 
+    # Pre-fetch calibrator spectra once per unique calibrator file, before the
+    # pair loop, so that the (potentially slow) database lookup is not repeated
+    # when the same calibrator is matched to several science exposures.
+    cal_db_paths = sorted(glob.glob(str(cal_databases_dir / "*.fits")))
+    cal_spectra: dict[Path, CalibratorSpectrum | None] = {}
+    for _, cal_info in pairs:
+        if cal_info is None or cal_info.filepath in cal_spectra:
+            continue
+        with fits.open(cal_info.filepath) as hdul:
+            cal_name_pre = hdul["OI_TARGET"].data["TARGET"][0]
+            ra_pre = float(hdul["OI_TARGET"].data["RAEP0"][0])
+            dec_pre = float(hdul["OI_TARGET"].data["DECEP0"][0])
+            band_pre = hdul[0].header["HIERARCH ESO DET CHIP TYPE"]
+        cal_spectra[cal_info.filepath] = lookup_calibrator_spectrum(
+            cal_name_pre,
+            ra_pre,
+            dec_pre,
+            cal_database_paths=[Path(p) for p in cal_db_paths],
+            match_radius=config.match_radius,
+            band=band_pre,
+        )
+        logger.info(
+            "Pre-fetched spectrum for calibrator '%s' (%s).",
+            cal_name_pre,
+            cal_info.filename,
+        )
+
     i_pair = 0  # Counter for internal diagnostics
     # Calibrate each pair
     for sci, cal in pairs:
@@ -725,6 +788,7 @@ def run_flux_calibration(config: FluxCalibrationConfig) -> None:
             fig_dir=config.fig_dir,
             spectral_features=config.spectral_features,
             internal_cont=i_pair,
+            cal_spectrum=cal_spectra.get(cal.filepath),
         )
 
         if status == 0:

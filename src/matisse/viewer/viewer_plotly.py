@@ -868,7 +868,7 @@ def make_uvplot(
     if array_type.upper() == "UT":
         uv_max = 150
     else:  # AT
-        uv_max = 150
+        uv_max = 210
 
     row, col = 2, 3
     fig.update_xaxes(

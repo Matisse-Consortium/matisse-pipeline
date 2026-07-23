@@ -296,10 +296,13 @@ def fit_magic_numbers(
     result_poly_coef: list[FloatArray] = []
     for i in range(1, 3):
         data = combined_spectral[i]
-        if n_files > 1:
+        # Median over all stacked estimates of the pair (baseline a and the
+        # inverse of its swap partner). Also correct for a single file: use the
+        # median of the 2 rows, NOT data[0] alone, so the fitted polynomial
+        # matches the "Median data" that is displayed.
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
             median = np.nanmedian(data, axis=0)
-        else:
-            median = data[0]  # Single file case
 
         coef_window: list[FloatArray] = []
         for w_start, w_end in zip(wa, wd, strict=True):
@@ -329,7 +332,7 @@ def apply_bcd_corrections(
     split_chopping: bool = True,
     plot: bool = True,
     verbose: bool = False,
-    sub_band: str | None = None,
+    sub_band: str | Sequence[float] | None = None,
 ) -> None:
     """Apply BCD polynomial corrections for all BCD positions.
 
@@ -358,8 +361,10 @@ def apply_bcd_corrections(
         Generate correction plots. Default is True.
     verbose : bool, optional
         Show detailed metrics tables for each file. Default is False.
-    sub_band : {"L", "M", "N"} or None, optional
-        Sub-band to use when computing quality metrics. Default is None (full band).
+    sub_band : {"L", "M", "N"} or sequence of 2 floats or None, optional
+        Sub-band to use when computing quality metrics. Pass two values
+        ``[wl_low_um, wl_high_um]`` for an explicit wavelength range in microns.
+        Default is None (full band).
     """
 
     bases = _find_calibrator_filename_bases(data_dir, chopping=chopping)
@@ -442,11 +447,11 @@ def apply_bcd_corrections(
             console.rule(f"[bold cyan]{filename_base}[/bold cyan]")
             print_correction_metrics(df_metrics)
 
-        mean_ratio = np.mean(df_metrics["σ_BCD/σ_ref"][2:])
+        mean_ratio = np.mean(df_metrics["σ_BCD/ε_OUT-OUT"][2:])
 
         if verbose:
             log.info(
-                f"Mean ratio of σ_BCD/σ_ref (excluding unaffected baselines): {mean_ratio:.3f}"
+                f"Mean ratio of σ_BCD/ε_OUT-OUT (excluding unaffected baselines): {mean_ratio:.3f}"
             )
 
         is_recommended = mean_ratio <= 1.0
@@ -495,7 +500,7 @@ def apply_bcd_corrections(
         console.rule("[bold]BCD Correction Summary[/bold]")
         table = Table(show_header=True, header_style="bold magenta")
         table.add_column("File", style="cyan", no_wrap=False)
-        table.add_column("Mean σ_BCD/σ_ref", justify="right")
+        table.add_column("Mean σ_BCD/ε_OUT-OUT", justify="right")
         table.add_column("Quality", justify="center")
         table.add_column("Merge", justify="center")
 
@@ -1061,7 +1066,10 @@ def _save_poly_coefficients(
     """
     # Determine wavelength windows based on band
     if config.band == "LM":
-        windows = [(3.2, 4.0), (4.55, 4.9)]
+        windows = [
+            (3.2, 3.8),
+            (4.55, 4.9),
+        ]  # match the fit range wd in fit_magic_numbers
     else:  # N band
         windows = [(8.2, 12.0)]
 
@@ -1134,7 +1142,10 @@ def _save_summary(
 
     # Get wavelength windows based on band
     if config.band == "LM":
-        windows = [(3.2, 4.0), (4.55, 4.9)]
+        windows = [
+            (3.2, 3.8),
+            (4.55, 4.9),
+        ]  # match the fit range wd in fit_magic_numbers
     else:  # N band
         windows = [(8.2, 12.0)]
 
