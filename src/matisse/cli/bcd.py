@@ -175,11 +175,11 @@ def compute(
             return
 
         if not input_dirs:
-            console.print(
-                "[bold red]✗[/bold red] Missing input directories (required unless using --results-dir)",
-                style="red",
+            input_dirs = [Path.cwd()]
+            log.info(
+                "No input directories provided; using current directory: %s",
+                input_dirs[0],
             )
-            raise typer.Exit(code=1)
 
         # Process each mode
         all_results = {}
@@ -256,12 +256,14 @@ def compute(
 @app.command(name="apply")
 def apply(
     input_dir: Path = typer.Argument(
-        ...,
-        help="Directory containing OIFITS files (e.g., *_OIFITS/).",
+        Path.cwd(),
+        help="Directory containing OIFITS files (e.g., *_OIFITS/). Defaults to current directory.",
         exists=True,
     ),
-    corrections_dir: Path | None = typer.Argument(
+    corrections_dir: Path | None = typer.Option(
         None,
+        "--corrections-dir",
+        "-c",
         help="Directory containing BCD correction files (default: bundled master calibration).",
     ),
     chopping: bool = typer.Option(
@@ -355,8 +357,8 @@ def apply(
 @app.command(name="remove")
 def remove(
     input_dir: Path = typer.Argument(
-        ...,
-        help="Directory containing OIFITS files (e.g., *_OIFITS/).",
+        Path.cwd(),
+        help="Directory containing OIFITS files (e.g., *_OIFITS/). Defaults to current directory.",
         exists=True,
     ),
     chopping: bool = typer.Option(
@@ -408,8 +410,8 @@ def remove(
 @app.command(name="compare")
 def compare(
     data_dir: Path = typer.Argument(
-        ...,
-        help="Directory containing OIFITS files (e.g., *_OIFITS/).",
+        Path.cwd(),
+        help="Directory containing OIFITS files (e.g., *_OIFITS/). Defaults to current directory.",
         exists=True,
     ),
     corrections_dir: Path | None = typer.Option(
@@ -452,14 +454,14 @@ def compare(
 @app.command(name="merge")
 def merge(
     input_dir: Path = typer.Argument(
-        ...,
-        help="Directory containing OIFITS files (e.g., *_OIFITS/).",
+        Path.cwd(),
+        help="Directory containing OIFITS files (e.g., *_OIFITS/). Defaults to current directory.",
         exists=True,
     ),
-    combine_chopping: bool = typer.Option(
+    separate_chopping: bool = typer.Option(
         True,
-        "--combine-chopping",
-        help="When merging, combine chopped and unchopped files into one final OIFITS file.",
+        "--separate-chopping/--no-separate-chopping",
+        help="Keep chopped and unchopped files in separate merged outputs (default: True). Use --no-separate-chopping to merge them together.",
     ),
 ) -> None:
     """
@@ -471,7 +473,7 @@ def merge(
         str(input_dir),
         save=True,
         output_dir=input_dir,
-        separate_chopping=combine_chopping,
+        separate_chopping=separate_chopping,
     )
     return None
 
