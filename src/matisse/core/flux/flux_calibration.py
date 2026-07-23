@@ -16,7 +16,6 @@ from __future__ import annotations
 import glob
 import logging
 import math
-import os
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
@@ -594,10 +593,6 @@ def calibrate_flux(
         wav_model, flux_model, wav_cal_proc, detector, spectral_average
     )
     logger.info("Model spectrum resampled to %d channels.", len(spectrum_resampled))
-
-    data = np.column_stack((wav_cal_proc * 1e6, spectrum_resampled))
-    outfile = os.path.join(fig_dir, "spec_resampled_new.txt")
-    np.savetxt(outfile, data, "%.6f", header="wavelength flux")
 
     # Only generate the calibrator spectrum diagnostic for the first SCI-CAL pair to avoid redundancy
     if internal_cont == 0:
