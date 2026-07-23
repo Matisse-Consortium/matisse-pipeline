@@ -24,7 +24,10 @@ import numpy as np
 from astropy.io import fits
 
 from matisse.core.flux.airmass import compute_airmass_correction
-from matisse.core.flux.calibrator_spectrum import lookup_calibrator_spectrum
+from matisse.core.flux.calibrator_spectrum import (
+    CalibratorSpectrum,
+    lookup_calibrator_spectrum,
+)
 from matisse.core.flux.databases import get_cal_databases_dir
 from matisse.core.flux.diagnostics import (
     plot_airmass_correction,
@@ -362,6 +365,7 @@ def calibrate_flux(
     spectral_features: bool = False,
     fig_dir: Path | None = None,
     internal_cont: int = 0,
+    cal_spectrum: CalibratorSpectrum | None = None,
 ) -> int:
     """Apply spectrophotometric calibration to a single SCI/CAL pair.
 
@@ -500,16 +504,17 @@ def calibrate_flux(
         _close_all(hdul_sci, hdul_cal, hdul_out, output_path)
         return 5
 
-    # 5. Look up calibrator model spectrum
-    cal_db_paths = sorted(glob.glob(str(cal_databases_dir / "*.fits")))
-    cal_spectrum = lookup_calibrator_spectrum(
-        cal_name,
-        ra_cal,
-        dec_cal,
-        cal_database_paths=[Path(p) for p in cal_db_paths],
-        match_radius=match_radius,
-        band=band,
-    )
+    # 5. Look up calibrator model spectrum (use pre-fetched if available)
+    if cal_spectrum is None:
+        cal_db_paths = sorted(glob.glob(str(cal_databases_dir / "*.fits")))
+        cal_spectrum = lookup_calibrator_spectrum(
+            cal_name,
+            ra_cal,
+            dec_cal,
+            cal_database_paths=[Path(p) for p in cal_db_paths],
+            match_radius=match_radius,
+            band=band,
+        )
 
     if cal_spectrum is None:
         logger.error("Calibrator '%s' not found in any database.", cal_name)
@@ -729,6 +734,33 @@ def run_flux_calibration(config: FluxCalibrationConfig) -> None:
     # Match SCI ↔ CAL
     pairs = match_sci_cal(sci_files, cal_files, timespan_hours=config.timespan)
 
+    # Pre-fetch calibrator spectra once per unique calibrator file, before the
+    # pair loop, so that the (potentially slow) database lookup is not repeated
+    # when the same calibrator is matched to several science exposures.
+    cal_db_paths = sorted(glob.glob(str(cal_databases_dir / "*.fits")))
+    cal_spectra: dict[Path, CalibratorSpectrum | None] = {}
+    for _, cal_info in pairs:
+        if cal_info is None or cal_info.filepath in cal_spectra:
+            continue
+        with fits.open(cal_info.filepath) as hdul:
+            cal_name_pre = hdul["OI_TARGET"].data["TARGET"][0]
+            ra_pre = float(hdul["OI_TARGET"].data["RAEP0"][0])
+            dec_pre = float(hdul["OI_TARGET"].data["DECEP0"][0])
+            band_pre = hdul[0].header["HIERARCH ESO DET CHIP TYPE"]
+        cal_spectra[cal_info.filepath] = lookup_calibrator_spectrum(
+            cal_name_pre,
+            ra_pre,
+            dec_pre,
+            cal_database_paths=[Path(p) for p in cal_db_paths],
+            match_radius=config.match_radius,
+            band=band_pre,
+        )
+        logger.info(
+            "Pre-fetched spectrum for calibrator '%s' (%s).",
+            cal_name_pre,
+            cal_info.filename,
+        )
+
     i_pair = 0  # Counter for internal diagnostics
     # Calibrate each pair
     for sci, cal in pairs:
@@ -756,6 +788,7 @@ def run_flux_calibration(config: FluxCalibrationConfig) -> None:
             fig_dir=config.fig_dir,
             spectral_features=config.spectral_features,
             internal_cont=i_pair,
+            cal_spectrum=cal_spectra.get(cal.filepath),
         )
 
         if status == 0:
