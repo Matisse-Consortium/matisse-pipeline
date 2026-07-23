@@ -296,10 +296,11 @@ def fit_magic_numbers(
     result_poly_coef: list[FloatArray] = []
     for i in range(1, 3):
         data = combined_spectral[i]
-        if n_files > 1:
-            median = np.nanmedian(data, axis=0)
-        else:
-            median = data[0]  # Single file case
+        # Median over all stacked estimates of the pair (baseline a and the
+        # inverse of its swap partner). Also correct for a single file: use the
+        # median of the 2 rows, NOT data[0] alone, so the fitted polynomial
+        # matches the "Median data" that is displayed.
+        median = np.nanmedian(data, axis=0)
 
         coef_window: list[FloatArray] = []
         for w_start, w_end in zip(wa, wd, strict=True):
@@ -1063,7 +1064,10 @@ def _save_poly_coefficients(
     """
     # Determine wavelength windows based on band
     if config.band == "LM":
-        windows = [(3.2, 4.0), (4.55, 4.9)]
+        windows = [
+            (3.2, 3.8),
+            (4.55, 4.9),
+        ]  # match the fit range wd in fit_magic_numbers
     else:  # N band
         windows = [(8.2, 12.0)]
 
@@ -1136,7 +1140,10 @@ def _save_summary(
 
     # Get wavelength windows based on band
     if config.band == "LM":
-        windows = [(3.2, 4.0), (4.55, 4.9)]
+        windows = [
+            (3.2, 3.8),
+            (4.55, 4.9),
+        ]  # match the fit range wd in fit_magic_numbers
     else:  # N band
         windows = [(8.2, 12.0)]
 
