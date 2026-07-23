@@ -167,6 +167,11 @@ def discover_oifits_files(
     Files are matched by filename pattern and the ``HIERARCH ESO PRO CATG``
     header keyword when no explicit calibrator name is given.
 
+    Calibrator files are searched in *input_dir* **and** its parent directory,
+    so that the function works correctly when science files live in a
+    sub-directory (e.g. ``calibrated/``) while calibrator files are stored one
+    level up alongside raw data.
+
     Parameters
     ----------
     input_dir : Path
@@ -185,9 +190,15 @@ def discover_oifits_files(
         Sorted lists of (science_files, calibrator_files).
     """
     band_tag = f"IR-{band}"
-    abs_dir = str(input_dir.resolve()) + "/"
+    resolved_dir = input_dir.resolve()
+    abs_dir = str(resolved_dir) + "/"
 
-    sci_pattern = f"{abs_dir}*{sci_name}*_{band_tag}*Chop*.fits"
+    # Also search the parent directory for calibrators (common when calibrating
+    # from a sub-directory such as 'calibrated/', while raw calibrator files
+    # live one level up).
+    search_dirs = [abs_dir, str(resolved_dir.parent) + "/"]
+
+    sci_pattern = f"{abs_dir}*{sci_name}*_{band_tag}*hop*.fits"
     # In case of sci_name not specified, we want to consider all files as potential science targets
     sci_paths = []
     for fpath in sorted(glob.glob(sci_pattern)):
@@ -197,19 +208,39 @@ def discover_oifits_files(
                 sci_paths.append(Path(fpath))
 
     if cal_name:
-        cal_pattern = f"{abs_dir}*{cal_name}*_{band_tag}*Chop*.fits"
-        cal_paths = [Path(p) for p in sorted(glob.glob(cal_pattern))]
+        cal_paths_set: set[Path] = set()
+        for search_dir in search_dirs:
+            cal_pattern = f"{search_dir}*{cal_name}*_{band_tag}*hop*.fits"
+            for fpath in sorted(glob.glob(cal_pattern)):
+                cal_paths_set.add(Path(fpath))
+        cal_paths = sorted(cal_paths_set)
+        if any(p.parent != resolved_dir for p in cal_paths):
+            logger.info(
+                "Some calibrator files found in parent directory: %s",
+                resolved_dir.parent,
+            )
     else:
         logger.info(
             "No calibrator name specified – selecting closest calibrator in time."
         )
-        all_pattern = f"{abs_dir}*_{band_tag}*Chop*.fits"
         cal_paths = []
-        for fpath in sorted(glob.glob(all_pattern)):
-            with fits.open(fpath) as hdu:
-                catg = hdu[0].header.get("HIERARCH ESO PRO CATG", "")
-                if catg == "CALIB_RAW_INT":
-                    cal_paths.append(Path(fpath))
+        seen: set[Path] = set()
+        for search_dir in search_dirs:
+            all_pattern = f"{search_dir}*_{band_tag}*hop*.fits"
+            for fpath in sorted(glob.glob(all_pattern)):
+                p = Path(fpath)
+                if p in seen:
+                    continue
+                seen.add(p)
+                with fits.open(fpath) as hdu:
+                    catg = hdu[0].header.get("HIERARCH ESO PRO CATG", "")
+                    if catg == "CALIB_RAW_INT":
+                        cal_paths.append(p)
+        if any(p.parent != resolved_dir for p in cal_paths):
+            logger.info(
+                "Some calibrator files found in parent directory: %s",
+                resolved_dir.parent,
+            )
 
     sci_infos = sorted(
         [_extract_file_info(p, band) for p in sci_paths],
