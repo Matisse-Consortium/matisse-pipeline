@@ -262,7 +262,7 @@ def rename_calibrated_outputs(
             bcd_mode = hdr["ESO CFG BCD MODE"].replace("-", "_")
 
             chop_status = hdr["ESO ISS CHOP ST"]
-            suffix = "nochop" if chop_status == "F" else "chop"
+            suffix = "noChop" if chop_status == "F" else "Chop"
 
             new_name = f"{base_name}_{bcd_mode}_{suffix}{added_suffix}.fits"
             fits_file.rename(output_dir / new_name)
