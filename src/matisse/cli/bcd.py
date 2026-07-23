@@ -175,11 +175,11 @@ def compute(
             return
 
         if not input_dirs:
-            console.print(
-                "[bold red]✗[/bold red] Missing input directories (required unless using --results-dir)",
-                style="red",
+            input_dirs = [Path.cwd()]
+            log.info(
+                "No input directories provided; using current directory: %s",
+                input_dirs[0],
             )
-            raise typer.Exit(code=1)
 
         # Process each mode
         all_results = {}
@@ -256,12 +256,14 @@ def compute(
 @app.command(name="apply")
 def apply(
     input_dir: Path = typer.Argument(
-        ...,
-        help="Directory containing OIFITS files (e.g., *_OIFITS/).",
+        Path.cwd(),
+        help="Directory containing OIFITS files (e.g., *_OIFITS/). Defaults to current directory.",
         exists=True,
     ),
-    corrections_dir: Path | None = typer.Argument(
+    corrections_dir: Path | None = typer.Option(
         None,
+        "--corrections-dir",
+        "-c",
         help="Directory containing BCD correction files (default: bundled master calibration).",
     ),
     chopping: bool = typer.Option(
@@ -286,10 +288,15 @@ def apply(
         "--split-chopping",
         help="When merging, keep chopped and unchopped files separate instead of merging them together.",
     ),
-    sub_band: str | None = typer.Option(
+    sub_band: list[str] | None = typer.Option(
         None,
         "--sub-band",
-        help="Sub-band for quality metrics: L (2.8-4.2 um), M (4.5-5.0 um), N (8-13 um). Default: full band.",
+        help=(
+            "Sub-band for quality metrics. Use either a predefined band "
+            "(--sub-band L|M|N) or an explicit range in microns "
+            "(--sub-band 3.2,4.0). "
+            "Default: full correction range."
+        ),
     ),
     verbose: bool = typer.Option(
         False,
@@ -304,6 +311,36 @@ def apply(
     By default, shows a summary table of all processed files. Use --verbose to see
     detailed metrics for each file individually.
     """
+    parsed_sub_band: str | list[float] | None = None
+    if sub_band:
+        if len(sub_band) == 1:
+            token = sub_band[0].strip()
+            if "," in token:
+                parts = [part.strip() for part in token.split(",")]
+                if len(parts) != 2:
+                    raise typer.BadParameter(
+                        "Range format must contain exactly two values: low,high"
+                    )
+                try:
+                    parsed_sub_band = [float(parts[0]), float(parts[1])]
+                except ValueError as exc:
+                    raise typer.BadParameter(
+                        "Range values must be numeric microns, e.g. 3.2,4.0"
+                    ) from exc
+            else:
+                parsed_sub_band = token.upper()
+        elif len(sub_band) == 2:
+            try:
+                parsed_sub_band = [float(sub_band[0]), float(sub_band[1])]
+            except ValueError as exc:
+                raise typer.BadParameter(
+                    "When providing two --sub-band values, both must be numeric"
+                ) from exc
+        else:
+            raise typer.BadParameter(
+                "Use --sub-band L|M|N or exactly two values for a range"
+            )
+
     apply_bcd_corrections(
         input_dir,
         corrections_dir,
@@ -312,7 +349,7 @@ def apply(
         verbose=verbose,
         plot=plot,
         split_chopping=split_chopping,
-        sub_band=sub_band,
+        sub_band=parsed_sub_band,
     )
     raise typer.Exit(code=0)
 
@@ -320,8 +357,8 @@ def apply(
 @app.command(name="remove")
 def remove(
     input_dir: Path = typer.Argument(
-        ...,
-        help="Directory containing OIFITS files (e.g., *_OIFITS/).",
+        Path.cwd(),
+        help="Directory containing OIFITS files (e.g., *_OIFITS/). Defaults to current directory.",
         exists=True,
     ),
     chopping: bool = typer.Option(
@@ -373,8 +410,8 @@ def remove(
 @app.command(name="compare")
 def compare(
     data_dir: Path = typer.Argument(
-        ...,
-        help="Directory containing OIFITS files (e.g., *_OIFITS/).",
+        Path.cwd(),
+        help="Directory containing OIFITS files (e.g., *_OIFITS/). Defaults to current directory.",
         exists=True,
     ),
     corrections_dir: Path | None = typer.Option(
@@ -417,14 +454,14 @@ def compare(
 @app.command(name="merge")
 def merge(
     input_dir: Path = typer.Argument(
-        ...,
-        help="Directory containing OIFITS files (e.g., *_OIFITS/).",
+        Path.cwd(),
+        help="Directory containing OIFITS files (e.g., *_OIFITS/). Defaults to current directory.",
         exists=True,
     ),
-    combine_chopping: bool = typer.Option(
+    separate_chopping: bool = typer.Option(
         True,
-        "--combine-chopping",
-        help="When merging, combine chopped and unchopped files into one final OIFITS file.",
+        "--separate-chopping/--no-separate-chopping",
+        help="Keep chopped and unchopped files in separate merged outputs (default: True). Use --no-separate-chopping to merge them together.",
     ),
 ) -> None:
     """
@@ -436,7 +473,7 @@ def merge(
         str(input_dir),
         save=True,
         output_dir=input_dir,
-        separate_chopping=combine_chopping,
+        separate_chopping=separate_chopping,
     )
     return None
 

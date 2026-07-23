@@ -45,6 +45,11 @@ def calibrate(
         "--cumul-block/--no-cumul-block",
         help="Enable cumulBlock parameter in mat_cal_oifits (rarely used, expert only).",
     ),
+    force_sci: list[str] | None = typer.Option(
+        None,
+        "--force-sci",
+        help="Target name (HIERARCH ESO OBS TARG NAME) to treat as SCI even if classified as CALIB_RAW_INT. Repeatable. Useful when the dataset contains only calibrators.",
+    ),
     custom_recipes_dir: Path | None = typer.Option(
         None,
         "--recipe-dir",
@@ -79,6 +84,8 @@ def calibrate(
     console.print(f"[cyan]Result directory:[/] {resultdir.resolve()}")
     console.print(f"[magenta]Timespan:[/] {timespan} hours")
     console.print(f"[green]Bands:[/] {', '.join(bands)}")
+    if force_sci:
+        console.print(f"[yellow]Forced SCI targets:[/] {', '.join(force_sci)}")
     console.print(f"[dim]Verbose:[/] {'ON' if verbose else 'OFF'}")
 
     # --- 4. Validate bands ---
@@ -97,6 +104,7 @@ def calibrate(
             timespan=timespan,
             cumul_block=cumul_block,
             custom_recipes_dir=custom_recipes_dir,
+            force_sci_names=force_sci,
         )
 
         log.info(

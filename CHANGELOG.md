@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.8.0 (2026-06-04)
+
+### Feat
+
+- improvement of the resampling of calibrators and skycalc spectra + update of the web link to the STARSFLUX spectra
+- You can now force a calibrator to be consisered as science for the TF calibration
+
+### Fix
+
+- filter are now correctly applied (none for no filtering)
+
 ## v0.7.0 (2026-05-19)
 
 ### Feat

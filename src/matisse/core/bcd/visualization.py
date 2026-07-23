@@ -984,7 +984,7 @@ def plot_bcd_correction(
             label=r"$\sigma_{\rm ref}$",
         )
 
-        # Compute and display mean ratio σ_BCD / σ_ref in-band
+        # Compute and display mean ratio σ_BCD / ε_OUT-OUT in-band
         mean_std = np.nanmean(std_bcd[band_mask])
         mean_err = np.nanmean(vis2err_outout[band_mask])
         if mean_err > 0:
