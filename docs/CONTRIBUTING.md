@@ -70,7 +70,7 @@ Before submitting a Pull Request, please ensure:
 3. **Type Checking**: If applicable, verify types with `mypy`.
 
     ```bash
-    uv run mypy .
+    uv run mypy src/
     ```
 
 ## 🚀 Submitting a Pull Request
