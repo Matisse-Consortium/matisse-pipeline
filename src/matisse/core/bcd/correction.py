@@ -300,7 +300,9 @@ def fit_magic_numbers(
         # inverse of its swap partner). Also correct for a single file: use the
         # median of the 2 rows, NOT data[0] alone, so the fitted polynomial
         # matches the "Median data" that is displayed.
-        median = np.nanmedian(data, axis=0)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            median = np.nanmedian(data, axis=0)
 
         coef_window: list[FloatArray] = []
         for w_start, w_end in zip(wa, wd, strict=True):
