@@ -44,6 +44,10 @@ logger = logging.getLogger(__name__)
 #: The Zenodo API resolves this to the latest published version automatically.
 _ZENODO_CONCEPT_RECORD_ID = "19004354"
 
+#: Pinned fallback used when the Zenodo API is unreachable (e.g. CI network
+#: restrictions).  Update this when a new database version is published.
+_ZENODO_PINNED_VERSION = "1.0.0"
+
 #: Archive filename on Zenodo (single tar.gz containing all FITS databases).
 _ARCHIVE_NAME = "matisse_spectrum_database.tar.gz"
 
@@ -205,7 +209,14 @@ def _ensure_pooch_cache() -> Path:
             "Install it with:  pip install pooch"
         ) from exc
 
-    record_id, version = _resolve_latest_zenodo_record()
+    try:
+        record_id, version = _resolve_latest_zenodo_record()
+    except Exception:
+        # Fall back to pinned version when the API is unreachable (e.g. macOS CI)
+        record_id, version = _ZENODO_CONCEPT_RECORD_ID, _ZENODO_PINNED_VERSION
+        logger.warning(
+            "Zenodo API unreachable — using pinned record %s v%s", record_id, version
+        )
     base_url = f"https://zenodo.org/records/{record_id}/files"
 
     cache_dir = pooch.os_cache("matisse") / "cal_databases"

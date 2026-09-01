@@ -47,6 +47,7 @@ jobs:
           ~/Library/Caches/matisse
         key: matisse-cal-db-${{ runner.os }}-19004354
     - name: Prefetch calibrator databases
+      continue-on-error: true
       run: uv run python -c "from matisse.core.flux.databases import prefetch_databases; prefetch_databases()"
     # -------------------
     # Ruff lint + format
