@@ -863,7 +863,7 @@ def test_bcd_merge(bcd_dir, tmp_path):
     assert result.exit_code == 0
 
 
-def test_flux_calibrate(flux_dir, tmp_path):
+def test_flux_calibrate(flux_dir, tmp_path, skip_without_cal_databases):
     """Test `matisse flux_calibrate` functionality."""
     import shutil
 
@@ -886,7 +886,7 @@ def test_flux_calibrate(flux_dir, tmp_path):
     )
 
 
-def test_flux_calibrate_show(flux_dir, tmp_path):
+def test_flux_calibrate_show(flux_dir, tmp_path, skip_without_cal_databases):
     """Test `matisse flux_calibrate` functionality with figures."""
     import shutil
 
@@ -914,7 +914,9 @@ def test_flux_calibrate_show(flux_dir, tmp_path):
     )
 
 
-def test_flux_calibrate_airmass_correction(flux_dir, tmp_path):
+def test_flux_calibrate_airmass_correction(
+    flux_dir, tmp_path, skip_without_cal_databases
+):
     """Test `matisse flux_calibrate` functionality with airmass correction."""
     import shutil
 
@@ -937,7 +939,7 @@ def test_flux_calibrate_airmass_correction(flux_dir, tmp_path):
     )
 
 
-def test_flux_calibrate_Nband(flux_dir, tmp_path):
+def test_flux_calibrate_Nband(flux_dir, tmp_path, skip_without_cal_databases):
     """Test `matisse flux_calibrate` functionality with correlated flux."""
     import shutil
 
