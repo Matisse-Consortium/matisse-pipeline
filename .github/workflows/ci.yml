@@ -38,6 +38,16 @@ jobs:
         python-version: ${{ matrix.python-version }}
     - name: Build
       run: uv sync --no-editable --group test
+    # Cache Zenodo calibrator databases across runs (key tied to the deposit ID)
+    - name: Cache calibrator databases
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/matisse
+          ~/Library/Caches/matisse
+        key: matisse-cal-db-${{ runner.os }}-19004354
+    - name: Prefetch calibrator databases
+      run: uv run python -c "from matisse.core.flux.databases import prefetch_databases; prefetch_databases()"
     # -------------------
     # Ruff lint + format
     # -------------------
