@@ -1000,3 +1000,649 @@ def test_run_pipeline_processes_both_bands_in_single_call(tmp_path, monkeypatch)
     # Both detectors should have been processed in the same call
     assert "HAWAII-2RG" in selected_detectors
     assert "AQUARIUS" in selected_detectors
+
+
+# =====================================================================
+# Additional coverage for run_esorex / run_pipeline internals
+# =====================================================================
+
+
+class _SerialPool:
+    """multiprocessing.Pool stand-in running every task in the current process."""
+
+    def __init__(self, processes):
+        self.processes = processes
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def imap_unordered(self, func, tasks):
+        return [func(task) for task in tasks]
+
+
+class _EchoProgress(_DummyProgress):
+    """Progress stub whose console is the pipeline console, so prints are captured."""
+
+    def __init__(self, *args, **kwargs):
+        self.console = kwargs.get("console") or auto_pipeline.console
+
+
+_RAW_HEADER_BASE = {
+    "HIERARCH ESO DPR CATG": "SCIENCE",
+    "HIERARCH ESO DPR TYPE": "OBJECT",
+    "HIERARCH ESO DPR TECH": "INTERFEROMETRY",
+    "HIERARCH ESO DPR SEQ": "SEQ",
+    "HIERARCH ESO DET NAME": "MATISSE-LM",
+    "HIERARCH ESO DET READ CURNAME": "SCI-SLOW-SPEED",
+    "HIERARCH ESO DET CHIP NAME": "HAWAII-2RG",
+    "HIERARCH ESO DET SEQ1 DIT": 0.1,
+    "HIERARCH ESO DET SEQ1 PERIOD": 0.2,
+    "HIERARCH ESO INS PIL ID": "PHOTO",
+    "HIERARCH ESO INS PIN ID": "PHOTO",
+    "HIERARCH ESO INS DIL ID": "LOW",
+    "HIERARCH ESO INS DIN ID": "LOW",
+    "HIERARCH ESO INS POL ID": "POL",
+    "HIERARCH ESO INS FIL ID": "FILTER",
+    "HIERARCH ESO INS PON ID": "PON",
+    "HIERARCH ESO INS FIN ID": "FIN",
+    "HIERARCH ESO DET WIN MTRH2": 1.0,
+    "HIERARCH ESO DET WIN MTRS2": 1.0,
+    "HIERARCH ESO TPL START": "2025-01-01T00:00:00",
+    "HIERARCH ESO TPL ID": "TPL1",
+    "HIERARCH ESO INS DIL NAME": "LOW",
+    "HIERARCH ESO INS DIN NAME": "LOW",
+    "ESO OBS TARG NAME": "TARGET-STAR",
+}
+
+_AQUARIUS_OVERRIDES = {
+    "HIERARCH ESO DET NAME": "MATISSE-N",
+    "HIERARCH ESO DET CHIP NAME": "AQUARIUS",
+    "HIERARCH ESO DET READ CURNAME": "SCI-FAST-SPEED",
+}
+
+_CALIB_MATCH_KEYS = (
+    "HIERARCH ESO DET READ CURNAME",
+    "HIERARCH ESO DET CHIP NAME",
+    "HIERARCH ESO DET SEQ1 DIT",
+    "HIERARCH ESO DET SEQ1 PERIOD",
+    "HIERARCH ESO INS PIL ID",
+    "HIERARCH ESO INS PIN ID",
+    "HIERARCH ESO INS DIL ID",
+    "HIERARCH ESO INS DIN ID",
+    "HIERARCH ESO INS POL ID",
+    "HIERARCH ESO INS FIL ID",
+    "HIERARCH ESO INS PON ID",
+    "HIERARCH ESO INS FIN ID",
+    "HIERARCH ESO DET WIN MTRH2",
+    "HIERARCH ESO DET WIN MTRS2",
+    "HIERARCH ESO INS DIL NAME",
+    "HIERARCH ESO INS DIN NAME",
+)
+
+_CALIB_SPECS = (
+    ("badpix.fits", "BADPIX", "2025-01-01T00:10:00"),
+    ("obs_flatfield.fits", "OBS_FLATFIELD", "2025-01-01T00:12:00"),
+    ("nonlinearity.fits", "NONLINEARITY", "2025-01-01T00:14:00"),
+    ("shift_map.fits", "SHIFT_MAP", "2025-01-01T00:16:00"),
+    ("kappa_matrix.fits", "KAPPA_MATRIX", "2025-01-01T00:18:00"),
+)
+
+
+def _no_esorex(monkeypatch, spectral_param="spectralAverage", filter_params=""):
+    """Replace the two esorex probes called at the top of run_pipeline."""
+    monkeypatch.setattr(
+        auto_pipeline, "probe_spectral_param_name", lambda **_kwargs: spectral_param
+    )
+    monkeypatch.setattr(
+        auto_pipeline, "build_raw_estimates_params", lambda **_kwargs: filter_params
+    )
+
+
+def _capture_console(monkeypatch):
+    """Route every pipeline print into a StringIO-backed rich console."""
+    stream = io.StringIO()
+    test_console = Console(file=stream, force_terminal=False, width=220)
+    monkeypatch.setattr(auto_pipeline, "console", test_console)
+    monkeypatch.setattr(log_utils, "console", test_console)
+    return stream
+
+
+def _make_dataset(tmp_path, calib=True, **raw_overrides):
+    """Write one raw MATISSE block plus its matching calibration archive."""
+    raw_dir = tmp_path / "raw"
+    calib_dir = tmp_path / "calib"
+    result_dir = tmp_path / "results"
+    header = {**_RAW_HEADER_BASE, **raw_overrides}
+    _write_fits(raw_dir / "MATIS_RAW001.fits", **header)
+    calib_dir.mkdir(parents=True, exist_ok=True)
+    if calib:
+        common = {key: header[key] for key in _CALIB_MATCH_KEYS}
+        for filename, catg, tpl_start in _CALIB_SPECS:
+            _write_fits(
+                calib_dir / filename,
+                **{
+                    **common,
+                    "HIERARCH ESO PRO CATG": catg,
+                    "HIERARCH ESO TPL START": tpl_start,
+                },
+            )
+    return raw_dir, calib_dir, result_dir
+
+
+def _recording_esorex(commands):
+    """Build a run_esorex stub recording commands and creating the output dir."""
+
+    def fake_run_esorex(args):
+        cmd, block_index, recipe = args
+        commands.append(cmd)
+        for part in cmd.split():
+            if part.startswith("--output-dir="):
+                Path(part.split("=", 1)[1]).mkdir(parents=True, exist_ok=True)
+        return block_index, True, recipe, "dummy.err"
+
+    return fake_run_esorex
+
+
+def test_run_esorex_defaults_workdir_to_current_directory(monkeypatch, tmp_path):
+    """A command without a --working-dir option runs in the current directory."""
+    captured: dict[str, object] = {}
+
+    def fake_subprocess_run(
+        cmd_args, *, cwd=None, stdout=None, stderr=None, check=False
+    ):
+        captured["args"] = cmd_args
+        captured["cwd"] = cwd
+
+        class _Result:
+            returncode = 0
+
+        return _Result()
+
+    monkeypatch.setattr(auto_pipeline.subprocess, "run", fake_subprocess_run)
+
+    job_path = tmp_path / "block.sof"
+    cmd = f"esorex mat_im_basic {job_path}"
+
+    result = auto_pipeline.run_esorex((cmd, 7, "mat_im_basic"))
+
+    assert result == (7, True, "mat_im_basic", "esorex.log")
+    assert captured["cwd"] == "."
+    assert captured["args"] == ["esorex", "mat_im_basic", str(job_path)]
+    assert (tmp_path / "block.sof.log").exists()
+    assert (tmp_path / "block.sof.err").exists()
+
+
+def test_run_pipeline_inventory_returns_early(monkeypatch, tmp_path):
+    """inventory=True prints the file inventory and returns an empty summary."""
+    _no_esorex(monkeypatch)
+    stream = _capture_console(monkeypatch)
+
+    raw_dir = tmp_path / "raw"
+    _write_fits(raw_dir / "MATIS_RAW001.fits", **_RAW_HEADER_BASE)
+    _write_fits(
+        raw_dir / "MATIS_RAW002.fits",
+        **{**_RAW_HEADER_BASE, **_AQUARIUS_OVERRIDES},
+    )
+
+    summary = auto_pipeline.run_pipeline(dirRaw=str(raw_dir), inventory=True)
+
+    assert summary == {"n_action_raw_estimates_final": None, "expected_oifits": None}
+    output = stream.getvalue()
+    assert "MATISSE files inventory" in output
+    assert "MATIS_RAW001.fits" in output
+    assert "MATIS_RAW002.fits" in output
+
+
+@pytest.mark.parametrize(
+    ("spectral_param", "expected_message"),
+    [
+        ("spectralBinning", "Detected legacy recipe parameter"),
+        ("spectralAverage", "Using current recipe parameter"),
+    ],
+)
+def test_run_pipeline_reports_spectral_parameter_flavour(
+    monkeypatch, caplog, spectral_param, expected_message
+):
+    """The detected recipe parameter name drives the legacy/current log message."""
+    import logging
+
+    _no_esorex(monkeypatch, spectral_param=spectral_param)
+    monkeypatch.setattr(auto_pipeline, "Vizier", _DummyVizier)
+
+    def stop(_path):
+        raise _StopPipeline()
+
+    monkeypatch.setattr(auto_pipeline, "resolve_raw_input", stop)
+
+    with caplog.at_level(logging.DEBUG, logger="matisse"), pytest.raises(_StopPipeline):
+        auto_pipeline.run_pipeline(dirRaw="/does/not/matter")
+
+    assert any(expected_message in record.message for record in caplog.records)
+
+
+def test_run_pipeline_missing_calib_directory_leaves_blocks_unready(
+    monkeypatch, caplog, tmp_path
+):
+    """A non-existent dirCalib yields an empty archive and no ready block."""
+    import logging
+
+    _no_esorex(monkeypatch)
+    _capture_console(monkeypatch)
+    monkeypatch.setattr(auto_pipeline, "Progress", _DummyProgress)
+    monkeypatch.setattr(auto_pipeline, "Vizier", _DummyVizier)
+
+    raw_dir, _calib_dir, result_dir = _make_dataset(tmp_path, calib=False)
+    result_dir.mkdir(parents=True, exist_ok=True)
+
+    with caplog.at_level(logging.INFO, logger="matisse"):
+        summary = auto_pipeline.run_pipeline(
+            dirRaw=str(raw_dir),
+            dirCalib=str(tmp_path / "no_such_calib_dir"),
+            dirResult=str(result_dir),
+        )
+
+    assert summary == {"n_action_raw_estimates_final": 0, "expected_oifits": 0}
+    assert any(
+        "Block not ready to be processed" in record.message for record in caplog.records
+    )
+    assert list((result_dir / "reduced").glob("*.sof")) == []
+
+
+def test_run_pipeline_reports_unreadable_raw_file(monkeypatch, caplog, tmp_path):
+    """A raw file that is not valid FITS is reported and excluded from the run."""
+    import logging
+
+    _no_esorex(monkeypatch)
+    stream = _capture_console(monkeypatch)
+    monkeypatch.setattr(auto_pipeline, "Progress", _DummyProgress)
+    monkeypatch.setattr(auto_pipeline, "Vizier", _DummyVizier)
+
+    raw_dir = tmp_path / "raw"
+    calib_dir = tmp_path / "calib"
+    result_dir = tmp_path / "results"
+    calib_dir.mkdir(parents=True, exist_ok=True)
+    result_dir.mkdir(parents=True, exist_ok=True)
+    _write_fits(raw_dir / "MATIS_ok.fits", **_RAW_HEADER_BASE)
+    (raw_dir / "MATIS_bad.fits").write_text("this is definitely not a FITS file")
+
+    with caplog.at_level(logging.INFO, logger="matisse"):
+        auto_pipeline.run_pipeline(
+            dirRaw=str(raw_dir),
+            dirCalib=str(calib_dir),
+            dirResult=str(result_dir),
+        )
+
+    assert "1 files failed to read headers" in stream.getvalue()
+    messages = [record.message for record in caplog.records]
+    assert any("Header read failures: ['MATIS_bad.fits']" in msg for msg in messages)
+    assert any("Successfully read 1 FITS headers." in msg for msg in messages)
+
+
+def test_run_pipeline_skips_files_with_other_resolution(monkeypatch, caplog, tmp_path):
+    """resol='MED' discards both LM and N files recorded in LOW resolution."""
+    import logging
+
+    _no_esorex(monkeypatch)
+    _capture_console(monkeypatch)
+    monkeypatch.setattr(auto_pipeline, "Progress", _DummyProgress)
+    monkeypatch.setattr(auto_pipeline, "Vizier", _DummyVizier)
+
+    raw_dir = tmp_path / "raw"
+    result_dir = tmp_path / "results"  # deliberately not created yet
+    _write_fits(raw_dir / "MATIS_lm.fits", **_RAW_HEADER_BASE)
+    _write_fits(raw_dir / "MATIS_n.fits", **{**_RAW_HEADER_BASE, **_AQUARIUS_OVERRIDES})
+
+    with caplog.at_level(logging.INFO, logger="matisse"):
+        summary = auto_pipeline.run_pipeline(
+            dirRaw=str(raw_dir), dirResult=str(result_dir), resol="MED"
+        )
+
+    assert summary == {"n_action_raw_estimates_final": 0, "expected_oifits": 0}
+    assert any(
+        "Discovered 0 unique (TPL_START, DETECTOR) combinations." in record.message
+        for record in caplog.records
+    )
+    assert (result_dir / "reduced").is_dir()
+
+
+def test_run_pipeline_warns_about_both_skipped_bands(monkeypatch, caplog, tmp_path):
+    """--skipL and --skipN each report how many files of their band were dropped."""
+    import logging
+
+    _no_esorex(monkeypatch)
+    _capture_console(monkeypatch)
+    monkeypatch.setattr(auto_pipeline, "Progress", _DummyProgress)
+    monkeypatch.setattr(auto_pipeline, "Vizier", _DummyVizier)
+
+    raw_dir = tmp_path / "raw"
+    result_dir = tmp_path / "results"
+    result_dir.mkdir(parents=True, exist_ok=True)
+    _write_fits(raw_dir / "MATIS_lm.fits", **_RAW_HEADER_BASE)
+    _write_fits(raw_dir / "MATIS_n.fits", **{**_RAW_HEADER_BASE, **_AQUARIUS_OVERRIDES})
+
+    with caplog.at_level(logging.INFO, logger="matisse"):
+        auto_pipeline.run_pipeline(
+            dirRaw=str(raw_dir),
+            dirResult=str(result_dir),
+            skipL=True,
+            skipN=True,
+        )
+
+    messages = [record.message for record in caplog.records]
+    assert "Skipped 1 LM-band files (--skipL)." in messages
+    assert "Skipped 1 N-band files (--skipN)." in messages
+
+
+def test_run_pipeline_keeps_high_resolution_ordering_key(monkeypatch, tmp_path):
+    """A HIGH-resolution LM block still reaches esorex with its own resolution tag."""
+    _no_esorex(monkeypatch)
+    _capture_console(monkeypatch)
+    monkeypatch.setattr(auto_pipeline, "Progress", _DummyProgress)
+    monkeypatch.setattr(auto_pipeline, "Vizier", _DummyVizier)
+
+    raw_dir, calib_dir, result_dir = _make_dataset(
+        tmp_path, **{"HIERARCH ESO INS DIL NAME": "HIGH"}
+    )
+    result_dir.mkdir(parents=True, exist_ok=True)
+
+    commands: list[str] = []
+    monkeypatch.setattr(auto_pipeline, "run_esorex", _recording_esorex(commands))
+    monkeypatch.setattr(auto_pipeline, "Pool", _SerialPool)
+
+    auto_pipeline.run_pipeline(
+        dirRaw=str(raw_dir),
+        dirCalib=str(calib_dir),
+        dirResult=str(result_dir),
+    )
+
+    assert commands, "expected one esorex command"
+    assert commands[0].endswith("%HIGH")
+
+
+def test_run_pipeline_attaches_gra4mat_rmnrec_file(monkeypatch, caplog, tmp_path):
+    """A GRAVITY RMNREC file is skipped as raw input but attached to its block."""
+    import logging
+
+    _no_esorex(monkeypatch)
+    _capture_console(monkeypatch)
+    monkeypatch.setattr(auto_pipeline, "Progress", _DummyProgress)
+    monkeypatch.setattr(auto_pipeline, "Vizier", _DummyVizier)
+
+    raw_dir, calib_dir, result_dir = _make_dataset(tmp_path)
+    result_dir.mkdir(parents=True, exist_ok=True)
+    _write_fits(
+        raw_dir / "MATIS_rmnrec.fits",
+        **{
+            **_RAW_HEADER_BASE,
+            "HIERARCH ESO DPR TYPE": "RMNREC",
+            "HIERARCH ESO DEL FT SENSOR": "GRAVITY",
+        },
+    )
+
+    commands: list[str] = []
+    monkeypatch.setattr(auto_pipeline, "run_esorex", _recording_esorex(commands))
+    monkeypatch.setattr(auto_pipeline, "Pool", _SerialPool)
+
+    with caplog.at_level(logging.INFO, logger="matisse"):
+        auto_pipeline.run_pipeline(
+            dirRaw=str(raw_dir),
+            dirCalib=str(calib_dir),
+            dirResult=str(result_dir),
+        )
+
+    messages = [record.message for record in caplog.records]
+    assert any("MATIS_rmnrec.fits is a RMNREC file!" in msg for msg in messages)
+    assert "1 files identified as GRA4MAT." in messages
+
+    sof_files = list((result_dir / "reduced").glob("*.sof"))
+    assert len(sof_files) == 1
+    sof_content = sof_files[0].read_text()
+    assert f"{raw_dir / 'MATIS_rmnrec.fits'} RMNREC" in sof_content
+
+
+def test_run_pipeline_uses_telescop_keyword_for_recipe_options(monkeypatch, tmp_path):
+    """The TELESCOP keyword selects the telescope-specific recipe options."""
+    _no_esorex(monkeypatch)
+    _capture_console(monkeypatch)
+    monkeypatch.setattr(auto_pipeline, "Progress", _DummyProgress)
+    monkeypatch.setattr(auto_pipeline, "Vizier", _DummyVizier)
+
+    raw_dir, calib_dir, result_dir = _make_dataset(
+        tmp_path, **{**_AQUARIUS_OVERRIDES, "TELESCOP": "ESO-VLTI-A1234"}
+    )
+    result_dir.mkdir(parents=True, exist_ok=True)
+
+    commands: list[str] = []
+    monkeypatch.setattr(auto_pipeline, "run_esorex", _recording_esorex(commands))
+    monkeypatch.setattr(auto_pipeline, "Pool", _SerialPool)
+
+    auto_pipeline.run_pipeline(
+        dirRaw=str(raw_dir),
+        dirCalib=str(calib_dir),
+        dirResult=str(result_dir),
+    )
+
+    assert commands, "expected one esorex command"
+    assert "--replaceTel=3" in commands[0]
+
+
+@pytest.mark.parametrize(
+    ("overrides", "spectral_average", "filter_params", "expected", "unexpected"),
+    [
+        pytest.param(
+            {}, -1, "", ["--spectralAverage=5"], ["--vfactor"], id="lm-default"
+        ),
+        pytest.param(
+            {}, 3, "", ["--spectralAverage=3"], ["--vfactor"], id="lm-explicit"
+        ),
+        pytest.param(
+            _AQUARIUS_OVERRIDES,
+            -1,
+            "",
+            ["--spectralAverage=7"],
+            ["--vfactor"],
+            id="n-default",
+        ),
+        pytest.param(
+            _AQUARIUS_OVERRIDES,
+            3,
+            "",
+            ["--spectralAverage=3"],
+            ["--vfactor"],
+            id="n-explicit",
+        ),
+        pytest.param(
+            {},
+            3,
+            "--vfactor=TRUE",
+            ["--spectralAverage=3", "--vfactor=TRUE"],
+            [],
+            id="lm-filter-params",
+        ),
+        pytest.param(
+            _AQUARIUS_OVERRIDES,
+            3,
+            "--vfactor=TRUE",
+            ["--spectralAverage=3"],
+            ["--vfactor"],
+            id="n-filter-params-ignored",
+        ),
+    ],
+)
+def test_run_pipeline_builds_spectral_parameters(
+    monkeypatch,
+    tmp_path,
+    overrides,
+    spectral_average,
+    filter_params,
+    expected,
+    unexpected,
+):
+    """spectralAverage defaults and L/M-only filtering params land in the esorex command."""
+    _no_esorex(monkeypatch, filter_params=filter_params)
+    _capture_console(monkeypatch)
+    monkeypatch.setattr(auto_pipeline, "Progress", _DummyProgress)
+    monkeypatch.setattr(auto_pipeline, "Vizier", _DummyVizier)
+
+    raw_dir, calib_dir, result_dir = _make_dataset(tmp_path, **overrides)
+    result_dir.mkdir(parents=True, exist_ok=True)
+
+    commands: list[str] = []
+    monkeypatch.setattr(auto_pipeline, "run_esorex", _recording_esorex(commands))
+    monkeypatch.setattr(auto_pipeline, "Pool", _SerialPool)
+
+    auto_pipeline.run_pipeline(
+        dirRaw=str(raw_dir),
+        dirCalib=str(calib_dir),
+        dirResult=str(result_dir),
+        spectralAverage=spectral_average,
+    )
+
+    assert commands, "expected one esorex command"
+    for fragment in expected:
+        assert fragment in commands[0]
+    for fragment in unexpected:
+        assert fragment not in commands[0]
+
+
+def test_run_pipeline_detailed_block_forces_calibration_check(monkeypatch, tmp_path):
+    """detailed_block turns on the calibration report even when check_calib is off."""
+    _no_esorex(monkeypatch)
+    stream = _capture_console(monkeypatch)
+    monkeypatch.setattr(auto_pipeline, "Progress", _DummyProgress)
+    monkeypatch.setattr(auto_pipeline, "Vizier", _DummyVizier)
+
+    raw_dir, calib_dir, result_dir = _make_dataset(tmp_path)
+    result_dir.mkdir(parents=True, exist_ok=True)
+
+    def fail_run(*_args, **_kwargs):
+        raise AssertionError("esorex must not run in calibration-check mode")
+
+    monkeypatch.setattr(auto_pipeline, "run_esorex", fail_run)
+
+    auto_pipeline.run_pipeline(
+        dirRaw=str(raw_dir),
+        dirCalib=str(calib_dir),
+        dirResult=str(result_dir),
+        check_calib=False,
+        detailed_block=0,
+    )
+
+    output = stream.getvalue()
+    assert "Calibration Summary" in output
+    assert "Block #0 is out of range (available: 1-1)." in output
+    assert not (result_dir / "reduced").exists()
+
+
+def test_run_pipeline_passes_custom_recipe_dir(monkeypatch, tmp_path):
+    """custom_recipes_dir adds --recipe-dir to the generated esorex command."""
+    _no_esorex(monkeypatch)
+    _capture_console(monkeypatch)
+    monkeypatch.setattr(auto_pipeline, "Progress", _DummyProgress)
+    monkeypatch.setattr(auto_pipeline, "Vizier", _DummyVizier)
+
+    raw_dir, calib_dir, result_dir = _make_dataset(tmp_path)
+    result_dir.mkdir(parents=True, exist_ok=True)
+    recipes_dir = tmp_path / "custom_recipes"
+    recipes_dir.mkdir()
+
+    commands: list[str] = []
+    monkeypatch.setattr(auto_pipeline, "run_esorex", _recording_esorex(commands))
+    monkeypatch.setattr(auto_pipeline, "Pool", _SerialPool)
+
+    auto_pipeline.run_pipeline(
+        dirRaw=str(raw_dir),
+        dirCalib=str(calib_dir),
+        dirResult=str(result_dir),
+        custom_recipes_dir=recipes_dir,
+    )
+
+    assert commands, "expected one esorex command"
+    assert f"--recipe-dir={recipes_dir}" in commands[0]
+
+
+def test_run_pipeline_saves_svg_report(monkeypatch, tmp_path):
+    """save_report_svg=True writes matisse_report.svg into the result directory."""
+    _no_esorex(monkeypatch)
+    _capture_console(monkeypatch)
+    monkeypatch.setattr(auto_pipeline, "Progress", _DummyProgress)
+    monkeypatch.setattr(auto_pipeline, "Vizier", _DummyVizier)
+
+    raw_dir, calib_dir, result_dir = _make_dataset(tmp_path)
+    result_dir.mkdir(parents=True, exist_ok=True)
+
+    commands: list[str] = []
+    monkeypatch.setattr(auto_pipeline, "run_esorex", _recording_esorex(commands))
+    monkeypatch.setattr(auto_pipeline, "Pool", _SerialPool)
+
+    auto_pipeline.run_pipeline(
+        dirRaw=str(raw_dir),
+        dirCalib=str(calib_dir),
+        dirResult=str(result_dir),
+        save_report_svg=True,
+    )
+
+    report_path = result_dir / "matisse_report.svg"
+    assert report_path.exists()
+    assert report_path.read_text(encoding="utf-8").lstrip().startswith("<svg")
+
+
+def test_run_pipeline_reports_esorex_failures(monkeypatch, tmp_path):
+    """A failing esorex block is summarised with its missing inputs and status -1."""
+    _no_esorex(monkeypatch)
+    stream = _capture_console(monkeypatch)
+    monkeypatch.setattr(auto_pipeline, "Progress", _EchoProgress)
+    monkeypatch.setattr(auto_pipeline, "Vizier", _DummyVizier)
+    monkeypatch.setattr(auto_pipeline, "Pool", _SerialPool)
+
+    raw_dir, calib_dir, result_dir = _make_dataset(tmp_path)
+    result_dir.mkdir(parents=True, exist_ok=True)
+
+    def failing_run_esorex(args):
+        cmd, block_index, recipe = args
+        output_dir = None
+        for part in cmd.split():
+            if part.startswith("--output-dir="):
+                output_dir = Path(part.split("=", 1)[1])
+                break
+        assert output_dir is not None
+        output_dir.mkdir(parents=True, exist_ok=True)
+        log_path = output_dir / "esorex.log"
+        log_path.write_text(
+            "esorex: starting recipe\nERROR: Missing input frame: BADPIX\n",
+            encoding="utf-8",
+        )
+        return block_index, False, recipe, str(log_path)
+
+    monkeypatch.setattr(auto_pipeline, "run_esorex", failing_run_esorex)
+
+    final_blocks: list[list[auto_pipeline.RedBlock]] = []
+    original_show_blocs_status = auto_pipeline.show_blocs_status
+
+    def spy_show_blocs_status(list_cmd_esorex, list_red_blocks, check_blocks):
+        final_blocks.append(list(list_red_blocks))
+        return original_show_blocs_status(
+            list_cmd_esorex, list_red_blocks, check_blocks
+        )
+
+    monkeypatch.setattr(auto_pipeline, "show_blocs_status", spy_show_blocs_status)
+
+    auto_pipeline.run_pipeline(
+        dirRaw=str(raw_dir),
+        dirCalib=str(calib_dir),
+        dirResult=str(result_dir),
+    )
+
+    output = stream.getvalue()
+    assert "1 block(s) failed" in output
+    assert "esorex.log" in output
+    assert "Missing inputs detected in esorex log" in output
+    assert "ERROR: Missing input frame: BADPIX" in output
+
+    assert len(final_blocks) == 2, "expected the loop to run a second iteration"
+    for blocks in final_blocks:
+        assert blocks[0]["status"] == -1
+        assert blocks[0]["error_msg"] == "Missing: input frame"

@@ -31,6 +31,48 @@ def close_matplotlib_figures():
 
 
 @pytest.fixture(autouse=True)
+def reset_header_cache():
+    """
+    Clear the module-level FITS header cache between tests.
+
+    ``matisse.core.lib_auto_pipeline.cacheHdr`` is a process-wide path -> header
+    cache with no eviction, so without this a header read by one test stays
+    visible to every later one.
+    """
+    from matisse.core import lib_auto_pipeline
+
+    lib_auto_pipeline.cacheHdr.cache.clear()
+    yield
+    lib_auto_pipeline.cacheHdr.cache.clear()
+
+
+@pytest.fixture(autouse=True)
+def reset_log_consoles():
+    """
+    Give every test a clean rich console and report console.
+
+    Both live as module-level singletons in ``matisse.core.utils.log_utils`` and
+    are imported by value elsewhere (``from ... import console``), so they must be
+    drained in place rather than replaced: several modules hold a direct reference
+    to the same object. Without this, console output accumulates for the whole
+    session and one test can assert on text another test printed.
+    """
+    from matisse.core.utils import log_utils
+
+    def _drain():
+        stream = log_utils.console.file
+        if hasattr(stream, "truncate"):
+            stream.seek(0)
+            stream.truncate(0)
+        # export_text(clear=True) is rich's public way to drain the record buffer.
+        log_utils._report_console.export_text(clear=True)
+
+    _drain()
+    yield
+    _drain()
+
+
+@pytest.fixture(autouse=True)
 def cleanup_iter_dirs():
     """
     Automatically remove 'Iter1' to 'Iter4' directories after each test.

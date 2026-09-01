@@ -1080,3 +1080,496 @@ def test_show_files_inventory_ignores_appledouble_sidecar(tmp_path):
 
     table = show_files_inventory(str(tmp_path))
     assert table.row_count == 1
+
+
+# ---------------------------------------------------------------------------
+# Helpers for the CLI coverage tests below
+# ---------------------------------------------------------------------------
+
+
+def _console_capture():
+    """Capture everything printed on the shared rich console."""
+    from matisse.core.utils.log_utils import console
+
+    return console.capture()
+
+
+def _invoke_bcd_apply(monkeypatch, input_dir, tokens):
+    """Run 'bcd apply' with --sub-band tokens, capturing the parsed value."""
+    from matisse.cli import bcd as bcd_module
+
+    captured = {}
+
+    def fake_apply(_input_dir, _corrections_dir, **kwargs):
+        captured["sub_band"] = kwargs["sub_band"]
+
+    monkeypatch.setattr(bcd_module, "apply_bcd_corrections", fake_apply)
+
+    args = ["bcd", "apply", str(input_dir)]
+    for token in tokens:
+        args += ["--sub-band", token]
+
+    return runner.invoke(app, args, catch_exceptions=False), captured
+
+
+def _normalized_output(result):
+    """Return the CLI output without ANSI codes and with collapsed whitespace."""
+    return " ".join(strip_ansi(result.output).split())
+
+
+# ---------------------------------------------------------------------------
+# A. bcd
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("tokens", "expected"),
+    [
+        (["8.0,9.0"], [8.0, 9.0]),
+        ([" 3.2 , 4.0 "], [3.2, 4.0]),
+        (["n"], "N"),
+        (["L"], "L"),
+        (["8.0", "9.0"], [8.0, 9.0]),
+    ],
+)
+def test_bcd_apply_sub_band_valid(monkeypatch, tmp_path, tokens, expected):
+    """Valid --sub-band inputs become a numeric range or an upper-cased band."""
+    result, captured = _invoke_bcd_apply(monkeypatch, tmp_path, tokens)
+
+    assert result.exit_code == 0, result.output
+    assert captured["sub_band"] == expected
+
+
+@pytest.mark.parametrize(
+    ("tokens", "message"),
+    [
+        (["8.0,9.0,10.0"], "exactly two values: low,high"),
+        (["low,high"], "must be numeric microns"),
+        (["low", "high"], "both must be numeric"),
+        (["1.0", "2.0", "3.0"], "exactly two values for a range"),
+    ],
+)
+def test_bcd_apply_sub_band_invalid(monkeypatch, tmp_path, tokens, message):
+    """Malformed --sub-band inputs are rejected before any correction runs."""
+    result, captured = _invoke_bcd_apply(monkeypatch, tmp_path, tokens)
+
+    assert result.exit_code != 0
+    assert message in _normalized_output(result)
+    assert "sub_band" not in captured
+
+
+def test_bcd_compute_defaults_to_current_directory(
+    bcd_dir, tmp_path, monkeypatch, caplog
+):
+    """'bcd compute' without input dirs falls back to the current directory."""
+    import shutil
+
+    data_dir = tmp_path / "cwd_data"
+    shutil.copytree(bcd_dir, data_dir)
+    output_dir = tmp_path / "corrections"
+    monkeypatch.chdir(data_dir)
+
+    with caplog.at_level("INFO", logger="matisse"):
+        result = runner.invoke(
+            app,
+            ["bcd", "compute", "--output-dir", str(output_dir), "--bcd-mode", "IN_IN"],
+            catch_exceptions=False,
+        )
+
+    assert result.exit_code == 0, result.output
+    assert "No input directories provided" in caplog.text
+    assert "cwd_data" in caplog.text
+    assert len(list(output_dir.glob("*IN_IN*.csv"))) == 2
+
+
+def test_bcd_compute_invalid_extension_is_configuration_error(bcd_dir, tmp_path):
+    """An unknown OIFITS extension aborts 'bcd compute' with a clear message."""
+    with _console_capture() as capture:
+        result = runner.invoke(
+            app,
+            [
+                "bcd",
+                "compute",
+                str(bcd_dir),
+                "--output-dir",
+                str(tmp_path / "out"),
+                "--extension",
+                "oi_bogus",
+            ],
+            catch_exceptions=False,
+        )
+    output = capture.get()
+
+    assert result.exit_code == 1
+    assert "Configuration error" in output
+    assert "Unknown extension: OI_BOGUS" in output
+
+
+def test_bcd_compare_rejects_non_directory(real_oifits):
+    """'bcd compare' on a file (not a directory) exits with code 1."""
+    with _console_capture() as capture:
+        result = runner.invoke(
+            app,
+            ["bcd", "compare", str(real_oifits)],
+            catch_exceptions=False,
+        )
+
+    assert result.exit_code == 1
+    assert "Directory not found" in capture.get()
+
+
+def test_bcd_display_results_shows_dispersion(tmp_path, monkeypatch):
+    """_display_results appends the std deviation to the averaged magic numbers."""
+    import numpy as np
+
+    from matisse.cli.bcd import _display_results
+    from matisse.core.bcd import BCDConfig
+    from matisse.core.utils.log_utils import console
+
+    monkeypatch.setattr(console, "width", 200)
+
+    results = {
+        "corrections": {
+            "mean_over_files": np.arange(6, dtype=float),
+            "std_over_files": np.full(6, 0.5),
+            "baseline_pairs": [[2, 5], [3, 4]],
+            "baseline_names": ["U1-U2", "U1-U3", "U1-U4", "U2-U3", "U2-U4", "U3-U4"],
+        },
+        "csv_file": tmp_path / "corr_IN_IN.csv",
+    }
+    config = BCDConfig(bcd_mode="IN_IN", output_dir=tmp_path)
+
+    with _console_capture() as capture:
+        _display_results(results, tmp_path, config)
+    output = capture.get()
+
+    assert "0.00±0.50" in output
+    assert "5.00±0.50" in output
+    assert "corr_IN_IN.csv" in output
+
+
+# ---------------------------------------------------------------------------
+# B. calibrate
+# ---------------------------------------------------------------------------
+
+
+def test_calibrate_defaults_result_dir(tmp_path, monkeypatch, caplog):
+    """calibrate without --result-dir writes into calibrated/."""
+    from pathlib import Path
+
+    captured = {}
+
+    def fake_run_calibration(**kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr("matisse.cli.calibrate.run_calibration", fake_run_calibration)
+    datadir = tmp_path / "data"
+    datadir.mkdir()
+    monkeypatch.chdir(tmp_path)
+
+    with caplog.at_level("INFO", logger="matisse"):
+        result = runner.invoke(
+            app,
+            ["calibrate", "--data-dir", str(datadir), "--bands", "LM"],
+            catch_exceptions=False,
+        )
+
+    assert result.exit_code == 0, result.output
+    assert captured["output_dir"] == Path("calibrated")
+    assert "calibrated" in caplog.text
+
+
+def test_calibrate_reports_forced_sci_targets(tmp_path, monkeypatch):
+    """--force-sci echoes the forced science targets in the configuration block."""
+    monkeypatch.setattr("matisse.cli.calibrate.run_calibration", lambda **_kwargs: None)
+
+    with _console_capture() as capture:
+        result = runner.invoke(
+            app,
+            [
+                "calibrate",
+                "-d",
+                str(tmp_path),
+                "-r",
+                str(tmp_path / "out"),
+                "--bands",
+                "LM",
+                "--force-sci",
+                "HD1234",
+                "--force-sci",
+                "HD5678",
+            ],
+            catch_exceptions=False,
+        )
+    output = capture.get()
+
+    assert result.exit_code == 0, result.output
+    assert "Forced SCI targets:" in output
+    assert "HD1234, HD5678" in output
+
+
+def test_calibrate_rejects_invalid_bands(tmp_path, monkeypatch):
+    """calibrate exits with code 1 when an unknown band is requested."""
+    monkeypatch.setattr("matisse.cli.calibrate.run_calibration", lambda **_kwargs: None)
+
+    with _console_capture() as capture:
+        result = runner.invoke(
+            app,
+            [
+                "calibrate",
+                "-d",
+                str(tmp_path),
+                "-r",
+                str(tmp_path / "out"),
+                "--bands",
+                "XYZ",
+            ],
+            catch_exceptions=False,
+        )
+
+    assert result.exit_code == 1
+    assert "Invalid bands" in capture.get()
+
+
+def test_calibrate_reports_run_calibration_failure(tmp_path, monkeypatch):
+    """A crash inside run_calibration is surfaced as a calibration failure."""
+
+    def boom(**_kwargs):
+        raise RuntimeError("simulated calibration crash")
+
+    monkeypatch.setattr("matisse.cli.calibrate.run_calibration", boom)
+
+    result = runner.invoke(
+        app,
+        [
+            "calibrate",
+            "-d",
+            str(tmp_path),
+            "-r",
+            str(tmp_path / "out"),
+            "--bands",
+            "LM",
+        ],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 1
+    assert "Calibration failed: simulated calibration crash" in _normalized_output(
+        result
+    )
+
+
+# ---------------------------------------------------------------------------
+# C. reduce
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("none", "none"),
+        (" NONE ", "none"),
+        ("vf", "vf"),
+        ("VF, pf ", "vf,pf"),
+        ("vf,pf,vf", "vf,pf"),
+    ],
+)
+def test_validate_filter_mode_accepts_valid_values(value, expected):
+    """_validate_filter_mode normalises and deduplicates accepted filter modes."""
+    from matisse.cli.reduce import _validate_filter_mode
+
+    assert _validate_filter_mode(value) == expected
+
+
+@pytest.mark.parametrize("value", ["", "   ", ",", " , "])
+def test_validate_filter_mode_rejects_empty_values(value):
+    """_validate_filter_mode rejects inputs that contain no filter mode."""
+    import typer
+
+    from matisse.cli.reduce import _validate_filter_mode
+
+    with pytest.raises(typer.BadParameter) as excinfo:
+        _validate_filter_mode(value)
+    assert "comma-separated list" in str(excinfo.value)
+
+
+@pytest.mark.parametrize("value", ["xx", "vf,xx"])
+def test_validate_filter_mode_rejects_unknown_modes(value):
+    """_validate_filter_mode lists the allowed modes when one is unknown."""
+    import typer
+
+    from matisse.cli.reduce import _validate_filter_mode
+
+    with pytest.raises(typer.BadParameter) as excinfo:
+        _validate_filter_mode(value)
+    message = str(excinfo.value)
+    assert "Invalid filter mode(s): xx" in message
+    assert "Allowed values: vf, pf, jp" in message
+
+
+@pytest.mark.parametrize("value", [1, 2, 3, 4, 5, 6])
+def test_validate_filter_baseline_accepts_valid_baselines(value):
+    """_validate_filter_baseline returns baselines 1..6 unchanged."""
+    from matisse.cli.reduce import _validate_filter_baseline
+
+    assert _validate_filter_baseline(value) == value
+
+
+def test_validate_filter_baseline_allows_none():
+    """_validate_filter_baseline passes None through (no filtering)."""
+    from matisse.cli.reduce import _validate_filter_baseline
+
+    assert _validate_filter_baseline(None) is None
+
+
+@pytest.mark.parametrize("value", [0, 7, -1])
+def test_validate_filter_baseline_rejects_out_of_range(value):
+    """_validate_filter_baseline rejects baseline indices outside 1..6."""
+    import typer
+
+    from matisse.cli.reduce import _validate_filter_baseline
+
+    with pytest.raises(typer.BadParameter) as excinfo:
+        _validate_filter_baseline(value)
+    assert "between 1 and 6" in str(excinfo.value)
+
+
+def test_reduce_reports_pipeline_failure(tmp_path, monkeypatch):
+    """reduce exits with code 1 when run_pipeline raises."""
+    datadir = tmp_path / "data"
+    datadir.mkdir()
+    (datadir / "MATIS_test_file.fits").write_text("FAKE DATA")
+
+    def boom(**_kwargs):
+        raise RuntimeError("simulated pipeline crash")
+
+    monkeypatch.setattr(
+        reduce_module, "_show_recipe_info", lambda *_args, **_kwargs: None
+    )
+    monkeypatch.setattr(reduce_module, "run_pipeline", boom)
+
+    result = runner.invoke(
+        app,
+        ["reduce", "--data-dir", str(datadir), "--result-dir", str(tmp_path)],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 1
+    assert "Reduction failed: simulated pipeline crash" in _normalized_output(result)
+
+
+def test_show_recipe_info_with_custom_recipe_dir():
+    """_show_recipe_info short-circuits when --recipe-dir is given."""
+    from pathlib import Path
+
+    with _console_capture() as capture:
+        assert reduce_module._show_recipe_info(Path("/opt/recipes")) is None
+
+    assert "Override pipeline recipe path" in capture.get()
+
+
+def test_show_recipe_info_from_environment(monkeypatch):
+    """_show_recipe_info reports recipe dirs coming from ESOREX_PLUGIN_DIR."""
+    from pathlib import Path
+
+    monkeypatch.setattr(
+        reduce_module, "_get_env_recipe_dirs", lambda: [Path("/opt/plugins")]
+    )
+
+    with _console_capture() as capture:
+        reduce_module._show_recipe_info()
+    output = capture.get()
+
+    assert "ESOREX_PLUGIN_DIR" in output
+    assert "/opt/plugins" in output
+
+
+def test_show_recipe_info_with_discovered_recipes(monkeypatch):
+    """_show_recipe_info prints the discovered recipe dir and recipe count."""
+    from pathlib import Path
+
+    from matisse.cli.doctor import RecipeDirProbe
+
+    probe = RecipeDirProbe(
+        recipe_dir=Path("/opt/recipes"), matisse_recipes=["mat_a", "mat_b"]
+    )
+    monkeypatch.setattr(reduce_module, "_get_env_recipe_dirs", lambda: [])
+    monkeypatch.setattr(
+        reduce_module, "find_matisse_recipe_dir", lambda **_kwargs: probe
+    )
+
+    with _console_capture() as capture:
+        reduce_module._show_recipe_info()
+    output = capture.get()
+
+    assert "/opt/recipes" in output
+    assert "2 found" in output
+
+
+def test_show_recipe_info_without_recipes(monkeypatch):
+    """_show_recipe_info warns when no MATISSE recipe directory is found."""
+    monkeypatch.setattr(reduce_module, "_get_env_recipe_dirs", lambda: [])
+    monkeypatch.setattr(
+        reduce_module, "find_matisse_recipe_dir", lambda **_kwargs: None
+    )
+
+    with _console_capture() as capture:
+        assert reduce_module._show_recipe_info() is None
+
+    assert "No MATISSE recipes found" in capture.get()
+
+
+# ---------------------------------------------------------------------------
+# D. flux_calibrate / main entrypoint
+# ---------------------------------------------------------------------------
+
+
+def test_flux_calibrate_echoes_explicit_result_dir(tmp_path, monkeypatch):
+    """flux_calibrate echoes and forwards an explicit --result-dir."""
+    from matisse.cli import flux_calibrate as flux_calibrate_module
+
+    captured = {}
+
+    def fake_run(config):
+        captured["output_dir"] = config.output_dir
+
+    monkeypatch.setattr(flux_calibrate_module, "run_flux_calibration", fake_run)
+
+    resultdir = tmp_path / "calflux_out"
+    resultdir.mkdir()
+
+    with _console_capture() as capture:
+        result = runner.invoke(
+            app,
+            [
+                "flux_calibrate",
+                "-d",
+                str(tmp_path),
+                "-r",
+                str(resultdir),
+                "-f",
+                str(tmp_path / "figs"),
+            ],
+            catch_exceptions=False,
+        )
+    output = capture.get()
+
+    assert result.exit_code == 0, result.output
+    assert captured["output_dir"] == resultdir
+    assert "Output directory:" in output
+    assert "auto (<datadir>" not in output
+
+
+def test_main_entrypoint_runs_app(monkeypatch, capsys):
+    """matisse.cli.main.main() dispatches to the Typer application."""
+    import sys
+
+    from matisse.cli import main as main_module
+
+    monkeypatch.setattr(sys, "argv", ["matisse", "--help"])
+
+    with pytest.raises(SystemExit) as excinfo:
+        main_module.main()
+
+    assert excinfo.value.code == 0
+    assert "Usage" in capsys.readouterr().out

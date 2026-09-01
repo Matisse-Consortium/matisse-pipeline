@@ -1,6 +1,9 @@
+import logging
+from pathlib import Path
 from unittest import mock
 
 import pytest
+from astropy.io import fits
 
 from matisse.core import lib_auto_calib as lac
 from matisse.core.auto_calib import run_calibration
@@ -288,3 +291,233 @@ def test_run_calibration_pipeline_mocked(data_dir, tmp_path):
         assert mock_esorex.called
         # Verify output directory was created
         assert resultdir.exists()
+
+
+# ---------------------------------------------------------------------------
+# run_esorex_calibration — failure paths (no real esorex needed)
+# ---------------------------------------------------------------------------
+
+
+def test_run_esorex_calibration_reports_log_tail_on_failure(
+    tmp_path, monkeypatch, caplog
+):
+    """A non-zero esorex exit code is reported with the last 10 log lines."""
+    sof_file = tmp_path / "test.sof"
+    sof_file.write_text("dummy_target.fits\tTARGET_RAW_INT\n")
+    (tmp_path / "calibration.log").write_text(
+        "\n".join(f"log line {i}" for i in range(20)), encoding="utf-8"
+    )
+    monkeypatch.setattr(lac.os, "system", lambda cmd: 256)
+
+    with caplog.at_level(logging.ERROR, logger="matisse"):
+        assert lac.run_esorex_calibration(sof_file, tmp_path) is False
+
+    assert "exit code: 256" in caplog.text
+    assert "Last lines of calibration.log" in caplog.text
+    # Only the final 10 lines are echoed back.
+    assert "log line 19" in caplog.text
+    assert "log line 10" in caplog.text
+    assert "log line 9" not in caplog.text
+
+
+def test_run_esorex_calibration_failure_without_log_file(tmp_path, monkeypatch):
+    """A failure with no log file on disk still returns False without raising."""
+    sof_file = tmp_path / "test.sof"
+    sof_file.write_text("dummy_target.fits\tTARGET_RAW_INT\n")
+    monkeypatch.setattr(lac.os, "system", lambda cmd: 1)
+
+    assert lac.run_esorex_calibration(sof_file, tmp_path) is False
+
+
+def test_run_esorex_calibration_returns_false_on_unexpected_error(
+    tmp_path, monkeypatch
+):
+    """An exception raised while launching esorex is swallowed into False."""
+    sof_file = tmp_path / "test.sof"
+    sof_file.write_text("dummy_target.fits\tTARGET_RAW_INT\n")
+
+    def boom(cmd):
+        raise OSError("cannot spawn")
+
+    monkeypatch.setattr(lac.os, "system", boom)
+
+    assert lac.run_esorex_calibration(sof_file, tmp_path) is False
+
+
+def test_run_esorex_calibration_passes_custom_recipe_dir(tmp_path, monkeypatch):
+    """A custom recipe directory is forwarded to esorex as --recipe-dir."""
+    sof_file = tmp_path / "test.sof"
+    sof_file.write_text("dummy_target.fits\tTARGET_RAW_INT\n")
+    recipes = tmp_path / "recipes"
+    recipes.mkdir()
+    captured: list[str] = []
+
+    monkeypatch.setattr(lac.os, "system", lambda cmd: captured.append(cmd) or 0)
+
+    assert (
+        lac.run_esorex_calibration(sof_file, tmp_path, custom_recipes_dir=recipes)
+        is True
+    )
+    assert f"--recipe-dir {recipes}" in captured[0]
+
+
+# ---------------------------------------------------------------------------
+# rename_calibrated_outputs
+# ---------------------------------------------------------------------------
+
+
+def _unreachable():
+    """Fail loudly if a code path we expect to be skipped is taken."""
+    raise AssertionError("fits.open should not have been called")
+
+
+def _calibrated_output(path, **cards):
+    """Write a header-only FITS standing in for an esorex calibration product."""
+    header = fits.Header()
+    for key, value in cards.items():
+        header[key] = value
+    fits.PrimaryHDU(header=header).writeto(path, overwrite=True)
+
+
+@pytest.mark.parametrize(
+    ("chop_status", "expected_suffix"),
+    [("F", "noChop"), ("T", "Chop")],
+)
+def test_rename_calibrated_outputs_uses_bcd_and_chop(
+    tmp_path, chop_status, expected_suffix
+):
+    """BCD mode and chopping status drive the canonical output file name."""
+    _calibrated_output(
+        tmp_path / "TARGET_CAL_INT_0001.fits",
+        **{"ESO CFG BCD MODE": "OUT-OUT", "ESO ISS CHOP ST": chop_status},
+    )
+
+    lac.rename_calibrated_outputs(tmp_path, "MYTARGET")
+
+    assert (tmp_path / f"MYTARGET_OUT_OUT_{expected_suffix}.fits").exists()
+    assert not (tmp_path / "TARGET_CAL_INT_0001.fits").exists()
+
+
+def test_rename_calibrated_outputs_ignores_unexpected_extensions(tmp_path, monkeypatch):
+    """A matching stem with a foreign extension is skipped before being opened."""
+    (tmp_path / "TARGET_CAL_INT_0009.fits.bak").touch()
+    opened: list = []
+    monkeypatch.setattr(
+        lac.fits, "open", lambda path, *a, **k: opened.append(path) or _unreachable()
+    )
+
+    lac.rename_calibrated_outputs(tmp_path, "MYTARGET")
+
+    assert opened == []
+    assert (tmp_path / "TARGET_CAL_INT_0009.fits.bak").exists()
+
+
+def test_rename_calibrated_outputs_keeps_file_with_missing_keywords(tmp_path, caplog):
+    """A product lacking the BCD keywords is left in place, and the failure is named."""
+    _calibrated_output(tmp_path / "TARGET_CAL_INT_0002.fits")
+
+    with caplog.at_level(logging.WARNING, logger="matisse"):
+        lac.rename_calibrated_outputs(tmp_path, "MYTARGET")
+
+    assert "Failed to rename TARGET_CAL_INT_0002.fits" in caplog.text
+    assert (tmp_path / "TARGET_CAL_INT_0002.fits").exists()
+
+
+def test_rename_calibrated_outputs_renames_nobcd_product(tmp_path):
+    """The noBCD product is renamed to the plain base name."""
+    _calibrated_output(tmp_path / "TARGET_CAL_INT_noBCD.fits")
+
+    lac.rename_calibrated_outputs(tmp_path, "MYTARGET")
+
+    assert (tmp_path / "MYTARGET.fits").exists()
+
+
+def test_rename_calibrated_outputs_appends_extra_suffix(tmp_path):
+    """An added suffix is appended before the extension."""
+    _calibrated_output(
+        tmp_path / "TARGET_CAL_INT_0003.fits",
+        **{"ESO CFG BCD MODE": "IN-IN", "ESO ISS CHOP ST": "F"},
+    )
+
+    lac.rename_calibrated_outputs(tmp_path, "MYTARGET", added_suffix="_cumul")
+
+    assert (tmp_path / "MYTARGET_IN_IN_noChop_cumul.fits").exists()
+
+
+# ---------------------------------------------------------------------------
+# cleanup_intermediate_files
+# ---------------------------------------------------------------------------
+
+
+def test_cleanup_intermediate_files_removes_only_intermediates(tmp_path):
+    """CALCPHASE/CALDPHASE/CALVIS products are removed, others are kept."""
+    for name in ("CALCPHASE_0001.fits", "CALDPHASE_0001.fits", "CALVIS_0001.fits"):
+        (tmp_path / name).touch()
+    keeper = tmp_path / "TARGET_CAL_INT_noBCD.fits"
+    keeper.touch()
+
+    lac.cleanup_intermediate_files(tmp_path)
+
+    assert sorted(p.name for p in tmp_path.iterdir()) == [keeper.name]
+
+
+def test_cleanup_intermediate_files_warns_when_removal_fails(
+    tmp_path, monkeypatch, caplog
+):
+    """A file that cannot be unlinked is named in a warning; the others still go."""
+    (tmp_path / "CALVIS_0001.fits").touch()
+    (tmp_path / "CALCPHASE_0001.fits").touch()
+    real_unlink = Path.unlink
+
+    def refuse_one(self, *args, **kwargs):
+        if self.name == "CALVIS_0001.fits":
+            raise OSError("permission denied")
+        return real_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", refuse_one)
+
+    with caplog.at_level(logging.WARNING, logger="matisse"):
+        lac.cleanup_intermediate_files(tmp_path)
+
+    assert "Failed to remove CALVIS_0001.fits" in caplog.text
+    assert (tmp_path / "CALVIS_0001.fits").exists()
+    assert not (tmp_path / "CALCPHASE_0001.fits").exists()
+
+
+# ---------------------------------------------------------------------------
+# generate_sof_files — nothing to reduce
+# ---------------------------------------------------------------------------
+
+
+def test_generate_sof_files_without_targets_hints_at_force_sci(tmp_path, caplog):
+    """Calibrators but no science target produces a --force-sci hint."""
+    _calibrated_output(
+        tmp_path / "cal_IR-LM_LOW.fits",
+        **{
+            "ESO PRO CATG": "CALIB_RAW_INT",
+            "ESO OBS TARG NAME": "HD1234",
+            "MJD-OBS": 60000.0,
+            "ESO DET CHIP NAME": "HAWAII-2RG",
+            "ESO DET SEQ1 DIT": 0.075,
+        },
+    )
+
+    with caplog.at_level(logging.WARNING, logger="matisse"):
+        sof_files = lac.generate_sof_files(
+            input_dir=tmp_path, output_dir=tmp_path, band="IR-LM", timespan=1.0
+        )
+
+    assert sof_files == []
+    assert "No target files found for band IRLM" in caplog.text
+    assert "HD1234" in caplog.text
+    assert "--force-sci" in caplog.text
+
+
+def test_generate_sof_files_without_any_file_warns(tmp_path):
+    """An input directory with no matching band yields no SOF file."""
+    assert (
+        lac.generate_sof_files(
+            input_dir=tmp_path, output_dir=tmp_path, band="IR-N", timespan=1.0
+        )
+        == []
+    )
