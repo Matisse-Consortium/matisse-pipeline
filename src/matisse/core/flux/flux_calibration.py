@@ -60,6 +60,7 @@ class OifitsFileInfo:
     bcd: str
     chop_status: bool
     resolution: str
+    spectral_average: float
 
 
 @dataclass
@@ -148,6 +149,15 @@ def _extract_file_info(filepath: Path, band: str) -> OifitsFileInfo:
         hdr = hdul[0].header
         bcd1 = hdr["HIERARCH ESO INS BCD1 ID"]
         bcd2 = hdr["HIERARCH ESO INS BCD2 ID"]
+        spectralAverage = np.nan
+        for i in range(1, 20):
+            hdrkey = "HIERARCH ESO PRO REC1 PARAM" + "%d" % i + " NAME"
+            if hdrkey in hdr:
+                if np.logical_or(
+                    "spectralBinning" in hdr[hdrkey], "spectralAverage" in hdr[hdrkey]
+                ):
+                    hdrkey2 = "HIERARCH ESO PRO REC1 PARAM" + "%d" % i + " VALUE"
+                    spectralAverage = float(hdr[hdrkey2])
         return OifitsFileInfo(
             filename=filepath.name,
             filepath=filepath,
@@ -156,6 +166,7 @@ def _extract_file_info(filepath: Path, band: str) -> OifitsFileInfo:
             bcd=f"{bcd1}-{bcd2}",
             chop_status=hdr["HIERARCH ESO ISS CHOP ST"],
             resolution=hdr[f"HIERARCH ESO INS {id_disp} NAME"],
+            spectral_average=spectralAverage,
         )
 
 
@@ -444,6 +455,16 @@ def calibrate_flux(
     ) / 2.0
     tpl_start_cal = hdr_cal["HIERARCH ESO TPL START"]
     band = hdr_cal["HIERARCH ESO DET CHIP TYPE"]  # 'IR-LM' or 'IR-N'
+    spectral_average = np.nan
+    for i in range(1, 20):
+        hdrkey = "HIERARCH ESO PRO REC1 PARAM" + "%d" % i + " NAME"
+        if hdrkey in hdr_cal:
+            if np.logical_or(
+                "spectralBinning" in hdr_cal[hdrkey],
+                "spectralAverage" in hdr_cal[hdrkey],
+            ):
+                hdrkey2 = "HIERARCH ESO PRO REC1 PARAM" + "%d" % i + " VALUE"
+                spectral_average = float(hdr_cal[hdrkey2])
 
     hdr_sci = hdul_sci[0].header
     airmass_sci = (
@@ -556,10 +577,20 @@ def calibrate_flux(
         wav_sci_proc[-1] * 1e6,
     )
 
+    # Determination of the overlap region
+    overlap_mask = (wav_model > 0.99 * np.nanmin(wav_cal_proc)) & (
+        wav_model < 1.01 * np.nanmax(wav_cal_proc)
+    )
+    wav_model = wav_model[overlap_mask]
+    flux_model = flux_model[overlap_mask]
+
     # 6. Resample model spectrum to observation grid
-    is_dense_model = len(wav_model) > len(wav_cal_proc)
+    dwav_cal_proc = np.mean(np.gradient(wav_cal_proc))
+    dwav_model = np.mean(np.gradient(wav_model))
+
+    is_dense_model = dwav_cal_proc > dwav_model
     spectrum_resampled = resample_model_spectrum(
-        wav_model, flux_model, wav_cal_proc, detector
+        wav_model, flux_model, wav_cal_proc, detector, spectral_average
     )
     logger.info("Model spectrum resampled to %d channels.", len(spectrum_resampled))
 

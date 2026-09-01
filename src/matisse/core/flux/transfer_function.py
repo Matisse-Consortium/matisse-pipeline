@@ -1,4 +1,4 @@
-"""
+""":
 Transfer function computation and application for MATISSE flux calibration.
 
 This module implements the core calibration algebra:
@@ -47,6 +47,7 @@ def resample_model_spectrum(
     flux_model: np.ndarray,
     wav_obs: np.ndarray,
     detector_type: str,
+    spectral_average: float,
     nsigma: int = 5,
 ) -> np.ndarray:
     """Resample a calibrator model spectrum onto the MATISSE wavelength grid.
@@ -68,6 +69,8 @@ def resample_model_spectrum(
          Model wavelength grid of the calibrator(same units as *wav_obs*; must be sorted ascending).
     detector_type : str
         Detector used for the observations ("HAWAII-2RG" or "AQUARIUS").
+    spectral_average : float
+        spectral averaging (in pix) applied during data reduction
     nsigma : int
         size of the window considered for the gaussian averaging (in unit of sigma of the gaussian kernel).
 
@@ -76,23 +79,25 @@ def resample_model_spectrum(
     np.ndarray
         Resampled flux on the ``wav_obs`` grid (Jy).
     """
-
-    # Check sampling ratio in the overlap region
-    overlap_mask = (wav_model > np.nanmin(wav_obs)) & (wav_model < np.nanmax(wav_obs))
-    n_model_in_range = int(np.nansum(overlap_mask))
-
-    # Get the size of a spectral channel (in pix) depending on the detector (spectral band)
+    # Get the size of a spectral channel (in pix) depending on the detector (spectral band) and the spectral averaging
     if "HAWAII" in detector_type:
-        SIZE_SPEC_CHANNEL = 4.92
+        if spectral_average < 4.92:
+            SIZE_SPEC_CHANNEL = 4.92
+        else:
+            SIZE_SPEC_CHANNEL = spectral_average
     else:
-        SIZE_SPEC_CHANNEL = 7.87
-
-    if 2.0 * len(wav_obs) < n_model_in_range:
-        # Model is much denser → bin-weighted integration
+        if spectral_average < 7.87:
+            SIZE_SPEC_CHANNEL = 7.87
+        else:
+            SIZE_SPEC_CHANNEL = spectral_average
+    dwav_obs = np.mean(np.gradient(wav_obs))
+    dwav_model = np.mean(np.gradient(wav_model))
+    if dwav_model < dwav_obs:
+        # Model is denser → bin-weighted integration
         logger.debug(
             "Model denser than obs (%d vs %d) → bin integration.",
-            n_model_in_range,
-            len(wav_obs),
+            dwav_model,
+            dwav_obs,
         )
         return _resample_by_gaussian_kernel(
             wav_obs,
@@ -142,8 +147,7 @@ def _resample_by_gaussian_kernel(
     weighted by a wavelength-dependent gaussian kernel, within a window of +- nsigma*sigma around the local wavelength of wav_obs, where sigma is the standard deviation of the gaussian kernel.
     """
 
-    spec_resampled = np.zeros_like(wav_obs, dtype=np.float64)
-
+    spec_resampled = np.zeros_like(wav_obs, dtype=float)
     # computation of the wavelength spacing per pixel
     dlam = np.abs(np.gradient(wav_obs))
 
@@ -187,7 +191,7 @@ def _resample_by_bin_integration(
     weighted by the fractional overlap between model and observation bins.
     """
     obs_lower, obs_upper, d_wav_obs = _compute_bin_edges(wav_obs)
-    resampled = np.zeros_like(wav_obs, dtype=np.float64)
+    resampled = np.zeros_like(wav_obs, dtype=float)
 
     for i in range(len(wav_obs)):
         # Find model bins that overlap with this observation bin
@@ -348,7 +352,6 @@ def calibrate_total_flux(
         f_cal = _flip_if_lband(flux_cal[j].copy(), band)
         ferr_sci = _flip_if_lband(hdul_sci["OI_FLUX"].data["FLUXERR"][j].copy(), band)
         ferr_cal = _flip_if_lband(hdul_cal["OI_FLUX"].data["FLUXERR"][j].copy(), band)
-
         # Calibrated flux: F_sci / F_cal × model × airmass_corr
         f_calibrated = f_sci / f_cal * spectrum_cal_resampled * airmass_correction
 

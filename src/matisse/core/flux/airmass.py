@@ -220,7 +220,7 @@ def _resample_to_matisse_resolution(
         Resampled flux on the ``wav_obs`` grid (Jy).
     """
 
-    spec_resampled = np.zeros_like(wav_obs, dtype=np.float64)
+    spec_resampled = np.zeros_like(wav_obs, dtype=float)
 
     # computation of the wavelength spacing per pixel
     dlam = np.abs(np.gradient(wav_obs))
