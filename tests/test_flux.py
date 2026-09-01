@@ -6,7 +6,13 @@ import numpy as np
 import pytest
 from astropy.io import fits
 
-from matisse.core.flux import airmass, calibrator_spectrum, databases, utils
+from matisse.core.flux import (
+    airmass,
+    calibrator_spectrum,
+    databases,
+    diagnostics,
+    utils,
+)
 
 
 def _make_hdul(**header_values: str | float) -> fits.HDUList:
@@ -360,3 +366,209 @@ def test_lookup_starsflux_realstar():
     assert result.name == "HD26546"
     assert result.diameter_mas == pytest.approx(0.45, abs=0.01)
     assert len(wavelengths) == len(flux)
+
+
+# ============================================================================
+# Tests for diagnostics.py
+# ============================================================================
+
+
+def _make_calibrated_hdul(n_wav: int = 20, n_tel: int = 2) -> fits.HDUList:
+    """Build a minimal calibrated OIFITS HDUList for diagnostics tests."""
+    wav = np.linspace(3.0e-6, 4.0e-6, n_wav)
+    wav_col = fits.Column(name="eff_wave", format="E", array=wav.astype(np.float32))
+    oi_wav = fits.BinTableHDU.from_columns([wav_col], name="OI_WAVELENGTH")
+
+    sta_indices = np.arange(1, n_tel + 1, dtype=np.int16)
+    sta_names = np.array([f"U{i}" for i in range(1, n_tel + 1)])
+
+    arr_cols = fits.ColDefs(
+        [
+            fits.Column(name="STA_INDEX", format="I", array=sta_indices),
+            fits.Column(name="STA_NAME", format="4A", array=sta_names),
+        ]
+    )
+    oi_array = fits.BinTableHDU.from_columns(arr_cols, name="OI_ARRAY")
+
+    fluxdata = np.ones((n_tel, n_wav), dtype=np.float32) * 10.0
+    fluxerr = np.ones((n_tel, n_wav), dtype=np.float32) * 0.5
+    flux_cols = fits.ColDefs(
+        [
+            fits.Column(name="FLUXDATA", format=f"{n_wav}E", array=fluxdata),
+            fits.Column(name="FLUXERR", format=f"{n_wav}E", array=fluxerr),
+            fits.Column(name="STA_INDEX", format="I", array=sta_indices),
+        ]
+    )
+    oi_flux = fits.BinTableHDU.from_columns(flux_cols, name="OI_FLUX")
+
+    n_bl = n_tel * (n_tel - 1) // 2 or 1
+    visamp = np.ones((n_bl, n_wav), dtype=np.float32) * 5.0
+    bl_sta = np.array([[1, 2]] * n_bl, dtype=np.int16)
+    ucoord = np.ones(n_bl, dtype=np.float32) * 50.0
+    vcoord = np.ones(n_bl, dtype=np.float32) * 30.0
+    vis_cols = fits.ColDefs(
+        [
+            fits.Column(name="VISAMP", format=f"{n_wav}E", array=visamp),
+            fits.Column(name="STA_INDEX", format="2I", array=bl_sta),
+            fits.Column(name="UCOORD", format="E", array=ucoord),
+            fits.Column(name="VCOORD", format="E", array=vcoord),
+        ]
+    )
+    oi_vis = fits.BinTableHDU.from_columns(vis_cols, name="OI_VIS")
+
+    return fits.HDUList([fits.PrimaryHDU(), oi_wav, oi_array, oi_flux, oi_vis])
+
+
+def test_plot_calibrator_spectrum_skips_when_fig_dir_none():
+    diagnostics.plot_calibrator_spectrum(
+        fig_dir=None,
+        cal_name="TEST",
+        band="IR-LM",
+        wav_model=np.linspace(3e-6, 4e-6, 50),
+        flux_model=np.ones(50) * 10.0,
+        wav_obs=np.linspace(3e-6, 4e-6, 20),
+        spectrum_resampled=np.ones(20) * 10.0,
+    )
+
+
+def test_plot_calibrator_spectrum_creates_file(tmp_path):
+    wav = np.linspace(3e-6, 4e-6, 50)
+    wav_obs = np.linspace(3e-6, 4e-6, 20)
+    diagnostics.plot_calibrator_spectrum(
+        fig_dir=tmp_path,
+        cal_name="HD 12345",
+        band="IR-LM",
+        wav_model=wav,
+        flux_model=np.ones(50) * 8.0,
+        wav_obs=wav_obs,
+        spectrum_resampled=np.ones(20) * 8.0,
+        is_dense_model=True,
+    )
+    assert len(list(tmp_path.glob("*.png"))) == 1
+
+
+def test_plot_calibrator_spectrum_sparse_model(tmp_path):
+    wav_obs = np.linspace(3e-6, 4e-6, 20)
+    diagnostics.plot_calibrator_spectrum(
+        fig_dir=tmp_path,
+        cal_name="TestCal",
+        band="IR-N",
+        wav_model=wav_obs,
+        flux_model=np.ones(20) * 5.0,
+        wav_obs=wav_obs,
+        spectrum_resampled=np.ones(20) * 5.0,
+        is_dense_model=False,
+    )
+    assert len(list(tmp_path.glob("*.png"))) == 1
+
+
+def test_plot_calibrator_spectrum_with_hdul(tmp_path):
+    wav_obs = np.linspace(3e-6, 4e-6, 20)
+    hdul = _make_calibrated_hdul(n_wav=20)
+    try:
+        diagnostics.plot_calibrator_spectrum(
+            fig_dir=tmp_path,
+            cal_name="TestCal",
+            band="IR-LM",
+            wav_model=wav_obs,
+            flux_model=np.ones(20) * 5.0,
+            wav_obs=wav_obs,
+            spectrum_resampled=np.ones(20) * 5.0,
+            hdul_cal=hdul,
+            diameter_mas=2.5,
+        )
+    finally:
+        hdul.close()
+    assert len(list(tmp_path.glob("*.png"))) == 1
+
+
+def test_plot_airmass_correction_skips_when_fig_dir_none():
+    diagnostics.plot_airmass_correction(
+        fig_dir=None,
+        wav_sci_m=np.linspace(3e-6, 4e-6, 20),
+        airmass_correction=np.ones(20),
+        output_tag="test",
+    )
+
+
+def test_plot_airmass_correction_creates_file(tmp_path):
+    wav = np.linspace(3e-6, 5e-6, 40)
+    corr = 1.0 + 0.1 * np.sin(np.linspace(0, np.pi, 40))
+    diagnostics.plot_airmass_correction(
+        fig_dir=tmp_path,
+        wav_sci_m=wav,
+        airmass_correction=corr,
+        output_tag="sci_cal",
+    )
+    assert len(list(tmp_path.glob("*.png"))) == 1
+
+
+def test_plot_calibrated_flux_skips_when_fig_dir_none():
+    hdul = _make_calibrated_hdul()
+    try:
+        diagnostics.plot_calibrated_flux(
+            fig_dir=None,
+            hdul_out=hdul,
+            cal_name="CAL",
+            sci_name="SCI",
+            mode="flux",
+            band="IR-LM",
+            bcd="OUT_OUT",
+        )
+    finally:
+        hdul.close()
+
+
+@pytest.mark.parametrize("mode", ["flux", "corrflux", "both"])
+def test_plot_calibrated_flux_modes(tmp_path, mode):
+    hdul = _make_calibrated_hdul()
+    try:
+        diagnostics.plot_calibrated_flux(
+            fig_dir=tmp_path,
+            hdul_out=hdul,
+            cal_name="CAL",
+            sci_name="SCI",
+            mode=mode,
+            band="IR-LM",
+            bcd="OUT_OUT",
+            dark_mode=True,
+        )
+    finally:
+        hdul.close()
+    assert len(list(tmp_path.glob("*.png"))) == 1
+
+
+def test_plot_calibrated_flux_light_mode(tmp_path):
+    hdul = _make_calibrated_hdul()
+    try:
+        diagnostics.plot_calibrated_flux(
+            fig_dir=tmp_path,
+            hdul_out=hdul,
+            cal_name="CAL",
+            sci_name="SCI",
+            mode="both",
+            band="IR-N",
+            bcd="IN_IN",
+            dark_mode=False,
+        )
+    finally:
+        hdul.close()
+    assert len(list(tmp_path.glob("*.png"))) == 1
+
+
+def test_plot_calibrated_flux_with_spectral_features(tmp_path):
+    hdul = _make_calibrated_hdul()
+    try:
+        diagnostics.plot_calibrated_flux(
+            fig_dir=tmp_path,
+            hdul_out=hdul,
+            cal_name="CAL",
+            sci_name="SCI",
+            mode="flux",
+            band="IR-LM",
+            bcd="OUT_OUT",
+            spectral_features=True,
+        )
+    finally:
+        hdul.close()
+    assert len(list(tmp_path.glob("*.png"))) == 1
