@@ -10,6 +10,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 
+import os
 import shutil
 from itertools import combinations
 from pathlib import Path
@@ -54,6 +55,21 @@ def cleanup_iter_dirs():
     ):
         if output_dir.exists():
             shutil.rmtree(output_dir, ignore_errors=True)
+
+
+@pytest.fixture
+def skip_without_cal_databases():
+    """Skip test if calibrator spectral databases are not reachable."""
+    from matisse.core.flux.databases import _find_cached_databases
+
+    env_path = os.environ.get("MATISSE_CAL_DB_PATH")
+    if env_path and Path(env_path).is_dir():
+        return
+    if _find_cached_databases() is not None:
+        return
+    pytest.skip(
+        "Calibrator spectral databases not available (no cache and Zenodo unreachable)"
+    )
 
 
 @pytest.fixture

@@ -30,6 +30,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import ssl
 import urllib.request
 from pathlib import Path
 
@@ -133,8 +134,14 @@ def _resolve_latest_zenodo_record() -> tuple[str, str]:
     """
     api_url = f"https://zenodo.org/api/records/{_ZENODO_CONCEPT_RECORD_ID}"
     try:
+        try:
+            import certifi
+
+            ssl_ctx = ssl.create_default_context(cafile=certifi.where())
+        except ImportError:
+            ssl_ctx = ssl.create_default_context()
         req = urllib.request.Request(api_url, headers={"Accept": "application/json"})
-        with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310
+        with urllib.request.urlopen(req, timeout=30, context=ssl_ctx) as resp:  # noqa: S310
             data = json.loads(resp.read())
     except Exception as exc:
         raise RuntimeError(
