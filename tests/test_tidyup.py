@@ -179,3 +179,27 @@ def test_tidyup_count_check_mismatch_warns(tmp_path, caplog):
     assert any("OIFITS count mismatch" in m for m in caplog.messages)
     assert any("expected 6" in m for m in caplog.messages)
     assert any("found 1" in m for m in caplog.messages)
+
+
+def test_change_oifits_filename_ignores_non_matisse_products(tmp_path):
+    """A file whose PRO CATG is not a MATISSE raw-int product is left untouched."""
+    oifits = tmp_path / "other.fits"
+    _write_oifits(oifits, catg="SOMETHING_ELSE")
+
+    change_oifits_filename(oifits)
+
+    assert oifits.exists()
+    assert [p.name for p in tmp_path.iterdir()] == ["other.fits"]
+
+
+def test_change_oifits_filename_preserves_gzip_suffix(tmp_path):
+    """A .fits.gz input keeps its compressed suffix in the canonical name."""
+    oifits = tmp_path / "raw.fits.gz"
+    _write_oifits(oifits, tpl_start="2024-01-01T10:20:30", chop="F")
+
+    change_oifits_filename(oifits)
+
+    renamed = [p.name for p in tmp_path.iterdir()]
+    assert renamed == [
+        "2024-01-01T102030_TestTarget_A1B2C3D4_IR-LM_HIGH_IN_IN_noChop.fits.gz"
+    ]

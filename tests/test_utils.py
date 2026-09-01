@@ -4,6 +4,7 @@ import importlib.util
 import io
 import json
 import logging
+import re
 from pathlib import Path
 
 import numpy as np
@@ -888,3 +889,341 @@ def test_save_report_creates_parent_dirs(tmp_path):
     result = log_utils.save_report(nested)
     assert result is not None
     assert result.exists()
+
+
+# ---------------------------------------------------------------------------
+# resolve_raw_input — compressed single file
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_raw_input_single_compressed_file(tmp_path):
+    """A lone .fits.gz path is accepted as a single compressed FITS file."""
+    archive = tmp_path / "MATIS_one.fits.gz"
+    archive.touch()
+
+    paths, source = io_utils.resolve_raw_input(str(archive))
+
+    assert paths == [archive]
+    assert source == "single compressed FITS file"
+
+
+# ---------------------------------------------------------------------------
+# OIFitsReader — extensions present but carrying no table data
+# ---------------------------------------------------------------------------
+
+
+def _reader_with(*hdus) -> oifits_reader.OIFitsReader:
+    """Build a reader whose HDU list is exactly the given extensions."""
+    reader = oifits_reader.OIFitsReader(Path("/tmp/unused.fits"))
+    reader._hdu = fits.HDUList([fits.PrimaryHDU(), *hdus])
+    return reader
+
+
+def test_read_wavelength_without_table_data_returns_empty():
+    """An OI_WAVELENGTH extension carrying no table yields an empty array."""
+    reader = _reader_with(fits.ImageHDU(name="OI_WAVELENGTH"))
+    try:
+        assert reader._read_wavelength().size == 0
+    finally:
+        reader._hdu.close()
+
+
+def test_read_array_data_without_table_data_returns_empty():
+    """An OI_ARRAY extension carrying no table yields an empty array."""
+    reader = _reader_with(fits.ImageHDU(name="OI_ARRAY"))
+    try:
+        assert reader._read_array_data("STA_NAME").size == 0
+    finally:
+        reader._hdu.close()
+
+
+@pytest.mark.parametrize(
+    ("ext_name", "method_name"),
+    [
+        ("OI_VIS", "_read_vis_table"),
+        ("OI_VIS2", "_read_vis2_table"),
+        ("OI_T3", "_read_t3_table"),
+        ("OI_FLUX", "_read_flux_table"),
+        ("TF2", "_read_tf2_table"),
+    ],
+)
+def test_read_tables_without_table_data_return_none(ext_name, method_name):
+    """Observable extensions carrying no table return None rather than raising."""
+    reader = _reader_with(fits.ImageHDU(name=ext_name))
+    try:
+        assert getattr(reader, method_name)() is None
+    finally:
+        reader._hdu.close()
+
+
+def test_build_blname_table_without_array_data_returns_empty():
+    """A dataless OI_ARRAY makes baseline-name building fail gracefully."""
+    reader = _reader_with(fits.ImageHDU(name="OI_ARRAY"), fits.ImageHDU(name="OI_VIS2"))
+    try:
+        assert reader._build_blname_table().size == 0
+    finally:
+        reader._hdu.close()
+
+
+def test_build_blname_table_without_vis2_data_returns_empty():
+    """A populated OI_ARRAY but a dataless OI_VIS2 also yields an empty array."""
+    array_hdu = fits.BinTableHDU.from_columns(
+        [
+            fits.Column(name="STA_INDEX", format="J", array=np.array([1, 2, 3, 4])),
+            fits.Column(
+                name="STA_NAME", format="8A", array=np.array(["A0", "B2", "C1", "D0"])
+            ),
+        ],
+        name="OI_ARRAY",
+    )
+    reader = _reader_with(array_hdu, fits.ImageHDU(name="OI_VIS2"))
+    try:
+        assert reader._build_blname_table().size == 0
+    finally:
+        reader._hdu.close()
+
+
+# ---------------------------------------------------------------------------
+# parse_esorex_missing_files / compact_missing_summary
+# ---------------------------------------------------------------------------
+
+
+def test_parse_esorex_missing_files_deduplicates(tmp_path):
+    """Only lines mentioning 'missing' are kept, once each, stripped."""
+    log_path = tmp_path / "esorex.log"
+    log_path.write_text(
+        "  Recipe started\n"
+        "  ERROR: missing dark file\n"
+        "  ERROR: missing dark file\n"
+        "  ERROR: Missing badpix map\n"
+        "  Recipe finished\n",
+        encoding="utf-8",
+    )
+
+    assert log_utils.parse_esorex_missing_files(str(log_path)) == [
+        "ERROR: missing dark file",
+        "ERROR: Missing badpix map",
+    ]
+
+
+def test_parse_esorex_missing_files_absent_log_returns_empty(tmp_path):
+    """A log that does not exist yields an empty list instead of raising."""
+    assert log_utils.parse_esorex_missing_files(str(tmp_path / "nope.log")) == []
+
+
+def test_compact_missing_summary_extracts_and_deduplicates_types():
+    """The phrase after 'missing' is extracted, case-insensitively deduplicated."""
+    lines = [
+        "ERROR: missing dark file: /a/b.fits",
+        "ERROR: Missing Dark File: /a/c.fits",
+        "ERROR: missing badpix map, aborting",
+    ]
+
+    assert log_utils.compact_missing_summary(lines) == "Missing: dark file, badpix map"
+
+
+def test_compact_missing_summary_truncates_beyond_six_types():
+    """More than six distinct types are truncated with an ellipsis marker."""
+    lines = [f"missing item{i}" for i in range(8)]
+
+    summary = log_utils.compact_missing_summary(lines)
+
+    assert summary.startswith("Missing: item0, item1")
+    assert summary.count(",") == 5
+    assert summary.endswith("…")
+
+
+def test_compact_missing_summary_falls_back_to_first_line():
+    """Without a 'missing X' pattern the first line is used, truncated at 70 chars."""
+    long_line = "E" * 100
+
+    assert log_utils.compact_missing_summary(["short failure"]) == "short failure"
+    assert log_utils.compact_missing_summary([long_line]) == "E" * 70 + "…"
+
+
+def test_compact_missing_summary_without_lines_uses_generic_message():
+    """An empty line list produces the generic esorex failure message."""
+    assert log_utils.compact_missing_summary([]) == "Esorex execution failed"
+
+
+# ---------------------------------------------------------------------------
+# show_calibration_status — detail-table edge cases
+# ---------------------------------------------------------------------------
+
+
+def _block(*, calib, chip="AQUARIUS", action="ACTION_MAT_EST_KAPPA", **extra):
+    """Build a minimal reduction block accepted by the log_utils reporters."""
+    block = {
+        "tplstart": "2024-01-01T00:00:00.AQUARIUS",
+        "input": [
+            [
+                "frame.fits",
+                "BADPIX",
+                {
+                    "HIERARCH ESO DET CHIP NAME": chip,
+                    "ESO OBS TARG NAME": "CAL",
+                },
+            ]
+        ],
+        "calib": calib,
+        "action": action,
+    }
+    block.update(extra)
+    return block
+
+
+def test_show_calibration_status_without_blocks_reports_no_details():
+    """Asking for details when there is no block at all is reported, not crashed."""
+    stream = _reset_console()
+
+    log_utils.show_calibration_status([], log_utils.console, detailed_block=1)
+
+    assert "No reduction blocks available" in stream.getvalue()
+
+
+@pytest.mark.parametrize("detailed_block", [0, 5])
+def test_show_calibration_status_out_of_range_block_is_reported(detailed_block):
+    """A detail request outside the available range reports the valid range."""
+    stream = _reset_console()
+
+    log_utils.show_calibration_status(
+        [_block(calib=[("badpix.fits", "BADPIX")])],
+        log_utils.console,
+        detailed_block=detailed_block,
+    )
+
+    assert f"Block #{detailed_block} is out of range" in stream.getvalue()
+
+
+def test_show_calibration_status_block_without_calibration_shows_placeholder():
+    """A block with an empty calibration list shows a placeholder detail row."""
+    stream = _reset_console()
+
+    log_utils.show_calibration_status(
+        [_block(calib=[])], log_utils.console, detailed_block=1
+    )
+
+    assert "No calibration files" in stream.getvalue()
+
+
+# ---------------------------------------------------------------------------
+# show_blocs_status — failed blocks and unknown detectors
+# ---------------------------------------------------------------------------
+
+
+def _wide_console(monkeypatch) -> io.StringIO:
+    """Swap in a console wide enough that table cells are not truncated."""
+    stream = io.StringIO()
+    monkeypatch.setattr(log_utils, "console", Console(file=stream, width=250))
+    return stream
+
+
+def test_show_blocs_status_reports_failed_block_message(monkeypatch):
+    """A block with status -1 is rendered as FAIL with its recorded error message."""
+    stream = _wide_console(monkeypatch)
+    blocks = [
+        _block(
+            calib=[("badpix.fits", "BADPIX")],
+            status=-1,
+            error_msg="Missing: dark file",
+        )
+    ]
+
+    log_utils.show_blocs_status([], blocks, check_blocks=False)
+
+    output = stream.getvalue()
+    assert "FAIL" in output
+    assert "Missing: dark file" in output
+    assert "Failed: 1" in output
+
+
+def test_show_blocs_status_failed_block_without_message_uses_default(monkeypatch):
+    """A failed block with no error_msg falls back to a generic message."""
+    stream = _wide_console(monkeypatch)
+    blocks = [_block(calib=[("badpix.fits", "BADPIX")], status=-1)]
+
+    log_utils.show_blocs_status([], blocks, check_blocks=False)
+
+    assert "Esorex execution failed" in stream.getvalue()
+
+
+def test_show_blocs_status_unknown_detector_reports_na_resolution():
+    """An unrecognised detector yields 'N/A' in the resolution column."""
+    stream = _reset_console()
+    blocks = [_block(calib=[("badpix.fits", "BADPIX")], chip="UNKNOWN-CHIP", status=-1)]
+
+    log_utils.show_blocs_status([], blocks, check_blocks=False)
+
+    assert "N/A" in stream.getvalue()
+
+
+# ---------------------------------------------------------------------------
+# show_files_inventory — band/style branches and unreadable files
+# ---------------------------------------------------------------------------
+
+
+def _cells(rendered_row: str) -> list[str]:
+    """Split a rendered rich table row into stripped cells.
+
+    Header and body rows use different box-drawing verticals, so both are accepted.
+    """
+    return [cell.strip() for cell in re.split(r"[\u2502\u2503]", rendered_row)]
+
+
+def _inventory_file(directory: Path, name: str, **cards) -> Path:
+    """Write a header-only FITS file into an inventory directory."""
+    path = directory / name
+    header = fits.Header()
+    for key, value in cards.items():
+        header[key] = value
+    fits.PrimaryHDU(header=header).writeto(path, overwrite=True)
+    return path
+
+
+def test_show_files_inventory_skips_unreadable_files(tmp_path):
+    """A file that is not valid FITS is counted as skipped, not fatal."""
+    stream = _reset_console()
+    _inventory_file(tmp_path, "MATIS_good.fits", **{"HIERARCH ESO DPR TYPE": "STD"})
+    (tmp_path / "MATIS_broken.fits").write_text("this is definitely not FITS")
+
+    table = log_utils.show_files_inventory(tmp_path)
+
+    assert table.row_count == 1
+    assert "Skipped 1 invalid FITS file(s)" in stream.getvalue()
+
+
+@pytest.mark.parametrize(
+    ("chip", "dpr_type", "expected_band"),
+    [
+        ("AQUARIUS", "STD", "N"),
+        ("AQUARIUS", "DARK", "N"),
+        ("HAWAII-2RG", "OBJECT", "LM"),
+        ("HAWAII-2RG", "FLAT", "LM"),
+        ("SOMETHING-ELSE", "DARK", "–"),
+    ],
+)
+def test_show_files_inventory_maps_chip_to_band(
+    tmp_path, monkeypatch, chip, dpr_type, expected_band
+):
+    """Each detector maps to the band shown in the inventory row."""
+    stream = _wide_console(monkeypatch)
+    _inventory_file(
+        tmp_path,
+        "MATIS_frame.fits",
+        **{
+            "HIERARCH ESO DET CHIP NAME": chip,
+            "HIERARCH ESO DPR TYPE": dpr_type,
+        },
+    )
+
+    table = log_utils.show_files_inventory(tmp_path)
+
+    assert table.row_count == 1
+    # Read the band out of the rendered BAND column, by position, rather than
+    # reaching into rich's private Column._cells.
+    lines = stream.getvalue().splitlines()
+    header = next(line for line in lines if "BAND" in line)
+    row = next(line for line in lines if "MATIS_frame.fits" in line)
+    band_index = _cells(header).index("BAND")
+
+    assert _cells(row)[band_index] == expected_band

@@ -1,6 +1,10 @@
+import shutil
+from pathlib import Path
+
 import numpy as np
 import plotly.graph_objects as go
 import pytest
+from astropy.io import fits
 
 from matisse.viewer import viewer_plotly as vp
 
@@ -171,6 +175,14 @@ def test_create_meta_from_mock_data(base_mock_data):
     assert meta["target"] == base_mock_data["TARGET"]
     assert meta["band"] == base_mock_data["BAND"]
     assert meta["chopping"] == "No"
+    assert meta["cat"] == base_mock_data["CATEGORY"]
+    assert meta["date"] == base_mock_data["DATEOBS"]
+    assert meta["disp"] == base_mock_data["DISP"]
+    assert meta["bcd"] == "IN-OUT"
+    assert meta["tel"] == base_mock_data["TEL_NAME"]
+    assert meta["config"] == "A0-B1-C2"
+    assert meta["dit"].value == pytest.approx(base_mock_data["DIT"])
+    assert str(meta["dit"].unit) == "s"
 
     # Ensure all fields are accessible
     for key in meta:
@@ -222,6 +234,8 @@ def test_make_table_builds_filtered_table_and_annotation(mock_fig):
     assert kwargs["row"] == 1
     assert kwargs["col"] == 1
 
+    param_values = list(table_trace.cells.values[0])
+    assert param_values == ["<b>TAU0 </b>"]  # filtered row only
     value_values = list(table_trace.cells.values[1])
     assert value_values == [5.0]  # filtered row only
     assert table_trace.header.line.color == color
@@ -289,15 +303,18 @@ def test_plot_spectrum_adds_flux_traces(mock_fig):
     ]
     assert all("NO FLUX DATA" not in t for t in annotation_texts)
 
-    names = {trace.name for trace, _, _ in mock_fig._added_traces}
-    assert names == {"UT1-STA1", "UT2-STA2"}
+    names = [trace.name for trace, _, _ in mock_fig._added_traces]
+    assert names == ["UT1-STA1", "UT2-STA2"]
 
-    for trace, row, col in mock_fig._added_traces:
+    # Each trace carries its own flux row against the wavelengths in microns.
+    for (trace, row, col), flux in zip(
+        mock_fig._added_traces, [flux_a, flux_b], strict=True
+    ):
         assert isinstance(trace, go.Scatter)
         assert row == 2
         assert col == 1
-    trace = mock_fig._added_traces[-1][0]
-    assert np.allclose(np.array(trace.x), wl * 1e6)
+        np.testing.assert_allclose(np.asarray(trace.x, dtype=float), wl * 1e6)
+        np.testing.assert_allclose(np.asarray(trace.y, dtype=float), flux)
 
 
 def test_plot_spectrum_returns_false_when_flux_missing(mock_fig):
@@ -455,6 +472,14 @@ def test_make_uvplot_adds_symmetrical_points(mock_fig):
     assert first_trace.marker.color == "#111111"
     assert first_trace.name == "A0-G0 (20.0 m)"
 
+    # (u, v) then its symmetric (-u, -v) counterpart, baseline after baseline.
+    expected_points = [(10.0, 5.0), (-10.0, -5.0), (-12.0, 8.0), (12.0, -8.0)]
+    for (trace, _, _), (x_val, y_val) in zip(
+        mock_fig._added_traces, expected_points, strict=True
+    ):
+        np.testing.assert_allclose(np.asarray(trace.x, dtype=float), [x_val])
+        np.testing.assert_allclose(np.asarray(trace.y, dtype=float), [y_val])
+
     # Check axes configuration
     _, kwargs_x = mock_fig.update_xaxes.call_args
     assert kwargs_x["title"] == "U (m)"
@@ -499,12 +524,18 @@ def test_plot_obs_groups_single_group_with_errors(mock_fig):
     traces = getattr(mock_fig, "_added_traces", [])
     assert len(traces) == len(baseline_names)
     for idx, ((trace, row, col), color) in enumerate(zip(traces, colors, strict=True)):
+        valid = ~flags[idx]
         assert isinstance(trace, go.Scatter)
+        assert trace.name == baseline_names[idx]
         assert trace.line.color == color
-        assert trace.error_y is not None
-        assert row in (3, 4)
+        assert row == 3 + idx
         assert col == 1
-        assert len(trace.y) == int(np.sum(~flags[idx]))
+        assert len(trace.y) == int(np.sum(valid))
+        np.testing.assert_allclose(np.asarray(trace.x, dtype=float), wl[valid] * 1e6)
+        np.testing.assert_allclose(np.asarray(trace.y, dtype=float), vis2[idx][valid])
+        np.testing.assert_allclose(
+            np.asarray(trace.error_y.array, dtype=float), vis2_err[idx][valid]
+        )
 
     # Ensure y-axis last call used provided range
     _, y_kwargs = mock_fig.update_yaxes.call_args
@@ -543,11 +574,19 @@ def test_plot_obs_groups_with_vis_amplitude(mock_fig):
     traces = getattr(mock_fig, "_added_traces", [])
     assert len(traces) == len(baseline_names)
     for idx, ((trace, row, col), color) in enumerate(zip(traces, colors, strict=True)):
+        valid = ~flags[idx]
         assert trace.legendgroup == "V"
+        assert trace.name == baseline_names[idx]
         assert trace.line.color == color
-        assert trace.error_y is not None
-        assert row in (3, 4) and col == 1
-        assert len(trace.y) == int(np.sum(~flags[idx]))
+        assert row == 3 + idx and col == 1
+        assert len(trace.y) == int(np.sum(valid))
+        np.testing.assert_allclose(np.asarray(trace.x, dtype=float), wl[valid] * 1e6)
+        np.testing.assert_allclose(
+            np.asarray(trace.y, dtype=float), vis_amp[idx][valid]
+        )
+        np.testing.assert_allclose(
+            np.asarray(trace.error_y.array, dtype=float), vis_amp_err[idx][valid]
+        )
 
 
 def test_plot_closure_groups_multiple_groups(mock_fig):
@@ -589,6 +628,17 @@ def test_plot_closure_groups_multiple_groups(mock_fig):
 
     last_trace, _, _ = traces[-1]
     assert last_trace.opacity == 0.1  # final alpha level for 4th group
+
+    # Triplet-major ordering: traces[t * n_groups + g] holds clos[g * n_triplets + t].
+    for t_idx in range(n_triplets):
+        for g_idx in range(n_groups):
+            trace, trace_row, trace_col = traces[t_idx * n_groups + g_idx]
+            assert trace.name == triplet_names[t_idx]
+            assert trace_row == 4 + t_idx and trace_col == 3
+            np.testing.assert_allclose(np.asarray(trace.x, dtype=float), wl * 1e6)
+            np.testing.assert_allclose(
+                np.asarray(trace.y, dtype=float), clos[g_idx * n_triplets + t_idx]
+            )
 
     _, y_kwargs = mock_fig.update_yaxes.call_args
     assert y_kwargs["range"] == [-90, 90]
@@ -704,3 +754,360 @@ def test_show_plot_writes_html(tmp_path):
 )
 def test_extract_bcd_from_filename(stem: str, expected: str | None):
     assert vp._extract_bcd_from_filename(stem) == expected
+
+
+# ---------------------------------------------------------------------------
+# find_siblings_all_bands — directory scanning edge cases
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def sibling_dir(viewer_dir, tmp_path):
+    """A writable copy of the viewer fixture directory (LM IN_IN, LM IN_OUT, N IN_IN)."""
+    target = tmp_path / "obs"
+    shutil.copytree(viewer_dir, target)
+    return target
+
+
+def _lm_in_in(directory: Path) -> Path:
+    """Return the LM IN_IN reference file inside a sibling directory."""
+    return directory / "fake1_IR-LM_LOW_IN_IN_noChop.fits"
+
+
+def _copy_with(source: Path, destination: Path, **cards) -> Path:
+    """Copy a FITS file and overwrite or delete primary-header keywords."""
+    shutil.copy(source, destination)
+    with fits.open(destination, mode="update") as hdul:
+        for key, value in cards.items():
+            if value is None:
+                del hdul[0].header[key]
+            else:
+                hdul[0].header[key] = value
+    return destination
+
+
+def test_find_siblings_groups_fixture_files_by_band(sibling_dir):
+    """The three reference files are grouped into LM (two BCDs) and N (one)."""
+    siblings = vp.find_siblings_all_bands(_lm_in_in(sibling_dir))
+
+    assert sorted(siblings) == ["LM", "N"]
+    assert sorted(siblings["LM"]) == ["IN_IN", "IN_OUT"]
+    assert list(siblings["N"]) == ["IN_IN"]
+
+
+def test_find_siblings_ignores_appledouble_sidecars(sibling_dir):
+    """macOS '._' sidecar files are skipped entirely."""
+    (sibling_dir / "._fake1_IR-LM_LOW_IN_IN_noChop.fits").write_text("sidecar")
+
+    siblings = vp.find_siblings_all_bands(_lm_in_in(sibling_dir))
+
+    assert sorted(siblings["LM"]) == ["IN_IN", "IN_OUT"]
+
+
+def test_find_siblings_skips_unreadable_files(sibling_dir):
+    """A file that is not valid FITS is skipped instead of aborting the scan."""
+    (sibling_dir / "broken.fits").write_text("definitely not FITS")
+
+    siblings = vp.find_siblings_all_bands(_lm_in_in(sibling_dir))
+
+    assert sorted(siblings["LM"]) == ["IN_IN", "IN_OUT"]
+
+
+def test_find_siblings_skips_other_templates(sibling_dir):
+    """A file from a different observing template is not treated as a sibling."""
+    _copy_with(
+        _lm_in_in(sibling_dir),
+        sibling_dir / "other_IR-LM_LOW_OUT_OUT_noChop.fits",
+        **{"HIERARCH ESO TPL START": "1999-01-01T00:00:00"},
+    )
+
+    siblings = vp.find_siblings_all_bands(_lm_in_in(sibling_dir))
+
+    assert sorted(siblings["LM"]) == ["IN_IN", "IN_OUT"]
+
+
+def test_find_siblings_skips_unknown_detectors(sibling_dir):
+    """A file whose detector maps to no band is dropped."""
+    _copy_with(
+        _lm_in_in(sibling_dir),
+        sibling_dir / "weird_IR-LM_LOW_OUT_OUT_noChop.fits",
+        **{"HIERARCH ESO DET CHIP NAME": "SOME-OTHER-CHIP"},
+    )
+
+    siblings = vp.find_siblings_all_bands(_lm_in_in(sibling_dir))
+
+    assert sorted(siblings["LM"]) == ["IN_IN", "IN_OUT"]
+
+
+def test_find_siblings_recovers_bcd_of_nobcd_files_from_filename(sibling_dir):
+    """A _noBCD product keeps its original BCD key, taken from the filename."""
+    _copy_with(
+        _lm_in_in(sibling_dir),
+        sibling_dir / "fake1_IR-LM_LOW_OUT_OUT_noChop_noBCD.fits",
+        **{
+            "HIERARCH ESO INS BCD1 NAME": "OUT",
+            "HIERARCH ESO INS BCD2 NAME": "OUT",
+        },
+    )
+
+    siblings = vp.find_siblings_all_bands(_lm_in_in(sibling_dir))
+
+    assert "OUT_OUT" in siblings["LM"]
+    assert siblings["LM"]["OUT_OUT"].name.endswith("_noBCD.fits")
+
+
+def test_find_siblings_falls_back_to_stem_without_bcd_keywords(sibling_dir):
+    """A file with no BCD metadata is keyed by its filename stem."""
+    calibrated = _copy_with(
+        _lm_in_in(sibling_dir),
+        sibling_dir / "calibrated_product.fits",
+        **{
+            "HIERARCH ESO INS BCD1 NAME": None,
+            "HIERARCH ESO INS BCD2 NAME": None,
+        },
+    )
+
+    siblings = vp.find_siblings_all_bands(_lm_in_in(sibling_dir))
+
+    assert siblings["LM"]["calibrated_product"] == calibrated
+
+
+def test_find_siblings_exposes_chop_tag_for_duplicate_bcd(sibling_dir):
+    """Two files sharing a BCD mode are disambiguated by their chopping status."""
+    _copy_with(
+        _lm_in_in(sibling_dir),
+        sibling_dir / "fake1_IR-LM_LOW_IN_IN_Chop.fits",
+        **{"HIERARCH ESO ISS CHOP ST": "T"},
+    )
+
+    siblings = vp.find_siblings_all_bands(_lm_in_in(sibling_dir))
+
+    assert "IN_IN_NOCHOP" in siblings["LM"]
+    assert "IN_IN_CHOP" in siblings["LM"]
+
+
+def test_find_siblings_numbers_remaining_duplicates(sibling_dir):
+    """Files identical in BCD and chopping get a numeric suffix."""
+    _copy_with(
+        _lm_in_in(sibling_dir), sibling_dir / "fake1_IR-LM_LOW_IN_IN_noChop_bis.fits"
+    )
+
+    siblings = vp.find_siblings_all_bands(_lm_in_in(sibling_dir))
+
+    assert "IN_IN_NOCHOP" in siblings["LM"]
+    assert "IN_IN_NOCHOP_2" in siblings["LM"]
+
+
+def test_find_siblings_without_readable_reference_scans_every_file(sibling_dir):
+    """An unreadable reference file disables template filtering and keeps all files."""
+    broken = sibling_dir / "broken.fits"
+    broken.write_text("definitely not FITS")
+
+    siblings = vp.find_siblings_all_bands(broken)
+
+    assert sorted(siblings["LM"]) == ["IN_IN", "IN_OUT"]
+    assert list(siblings["N"]) == ["IN_IN"]
+
+
+# ---------------------------------------------------------------------------
+# make_multi_bcd_plot — fallbacks
+# ---------------------------------------------------------------------------
+
+
+def _static_trace_count(path: Path) -> int:
+    """Number of traces in the single-dataset figure built from one file."""
+    from matisse.core.utils.oifits_reader import open_oifits
+
+    return len(vp.make_static_matisse_plot(open_oifits(str(path))).data)
+
+
+def test_make_multi_bcd_plot_falls_back_to_static_for_a_lone_file(viewer_dir, tmp_path):
+    """With a single discoverable file the plain single-dataset figure is returned."""
+    lonely = tmp_path / "fake1_IR-LM_LOW_IN_IN_noChop.fits"
+    shutil.copy(viewer_dir / "fake1_IR-LM_LOW_IN_IN_noChop.fits", lonely)
+
+    fig = vp.make_multi_bcd_plot(lonely)
+
+    assert isinstance(fig, go.Figure)
+    assert len(fig.data) == _static_trace_count(lonely)
+
+
+def test_make_multi_bcd_plot_handles_unreadable_reference_file(sibling_dir):
+    """An unreadable reference file still loads every sibling into the figure."""
+    broken = sibling_dir / "broken.fits"
+    broken.write_text("definitely not FITS")
+
+    fig = vp.make_multi_bcd_plot(broken)
+
+    assert isinstance(fig, go.Figure)
+    assert len(fig.data) > _static_trace_count(_lm_in_in(sibling_dir))
+
+
+def test_make_multi_bcd_plot_recovers_chop_suffixed_primary(sibling_dir):
+    """When chopping suffixes the keys, the reference file is still resolved."""
+    _copy_with(
+        _lm_in_in(sibling_dir),
+        sibling_dir / "fake1_IR-LM_LOW_IN_IN_Chop.fits",
+        **{"HIERARCH ESO ISS CHOP ST": "T"},
+    )
+
+    fig = vp.make_multi_bcd_plot(_lm_in_in(sibling_dir))
+
+    assert isinstance(fig, go.Figure)
+    assert len(fig.data) > _static_trace_count(_lm_in_in(sibling_dir))
+
+
+# ---------------------------------------------------------------------------
+# plot_spectrum — missing / degenerate flux blocks
+# ---------------------------------------------------------------------------
+
+
+def test_plot_spectrum_annotates_when_flux_block_is_absent(mock_fig, full_mock_data):
+    """A dataset without a FLUX block gets a 'NO FLUX DATA' marker instead."""
+    data = dict(full_mock_data)
+    del data["FLUX"]
+
+    plot_spectrum_result = vp.plot_spectrum(mock_fig, data)
+
+    texts = [
+        list(t.text) for t, _, _ in mock_fig._added_traces if getattr(t, "text", None)
+    ]
+    assert ["<b>NO FLUX DATA</b>"] in texts
+    assert plot_spectrum_result is False
+
+
+def test_plot_spectrum_annotates_when_flux_block_is_not_a_mapping(
+    mock_fig, full_mock_data
+):
+    """A FLUX block missing its sub-keys also degrades to the marker."""
+    data = dict(full_mock_data)
+    data["FLUX"] = {"SOMETHING_ELSE": []}
+
+    plot_spectrum_result = vp.plot_spectrum(mock_fig, data)
+
+    texts = [
+        list(t.text) for t, _, _ in mock_fig._added_traces if getattr(t, "text", None)
+    ]
+    assert ["<b>NO FLUX DATA</b>"] in texts
+    assert plot_spectrum_result is False
+
+
+def test_plot_spectrum_annotates_when_flux_table_is_empty(mock_fig, full_mock_data):
+    """An empty flux table produces the marker rather than an empty panel."""
+    data = dict(full_mock_data)
+    data["FLUX"] = {"FLUX": [], "STA_INDEX": [], "FLAG": []}
+
+    plot_spectrum_result = vp.plot_spectrum(mock_fig, data)
+
+    texts = [
+        list(t.text) for t, _, _ in mock_fig._added_traces if getattr(t, "text", None)
+    ]
+    assert ["<b>NO FLUX DATA</b>"] in texts
+    assert plot_spectrum_result is False
+
+
+def test_plot_spectrum_marker_falls_back_when_wavelengths_are_unusable(
+    mock_fig, full_mock_data
+):
+    """An unusable wavelength array still yields a centred marker."""
+    data = dict(full_mock_data)
+    del data["FLUX"]
+    data["WLEN"] = "not-an-array"
+
+    assert vp.plot_spectrum(mock_fig, data) is False
+
+    marker = next(
+        t
+        for t, _, _ in mock_fig._added_traces
+        if list(getattr(t, "text", None) or []) == ["<b>NO FLUX DATA</b>"]
+    )
+    assert list(marker.x) == [0.5]
+
+
+def test_plot_spectrum_cycles_colours_beyond_four_telescopes(mock_fig, full_mock_data):
+    """More than four photometric channels reuse the telescope colour cycle."""
+    data = dict(full_mock_data)
+    flux = full_mock_data["FLUX"]
+    data["STA_INDEX"] = list(full_mock_data["STA_INDEX"]) * 2
+    data["STA_NAME"] = list(full_mock_data["STA_NAME"]) * 2
+    data["TEL_NAME"] = list(full_mock_data["TEL_NAME"]) * 2
+    data["FLUX"] = {
+        "FLUX": list(flux["FLUX"]) * 2,
+        "STA_INDEX": list(flux["STA_INDEX"]) * 2,
+        "FLAG": list(flux["FLAG"]) * 2,
+    }
+
+    assert vp.plot_spectrum(mock_fig, data) is not False
+    assert len(mock_fig._added_traces) >= 8
+
+
+# ---------------------------------------------------------------------------
+# make_static_matisse_plot — correlated-flux datasets (no photometry, no VIS2)
+# ---------------------------------------------------------------------------
+
+
+def _corrflux_data(full_mock_data: dict) -> dict:
+    """A correlated-flux dataset: no photometry, no VIS2, uv coordinates on VIS."""
+    data = dict(full_mock_data)
+    data.pop("FLUX", None)
+    data["VIS"] = dict(full_mock_data["VIS"])
+    data["VIS"]["U"] = full_mock_data["VIS2"]["U"]
+    data["VIS"]["V"] = full_mock_data["VIS2"]["V"]
+    data["VIS2"] = None
+    return data
+
+
+def test_make_static_matisse_plot_handles_correlated_flux_data(full_mock_data):
+    """A dataset with only correlated flux still produces a complete figure."""
+    fig = vp.make_static_matisse_plot(_corrflux_data(full_mock_data))
+
+    assert isinstance(fig, go.Figure)
+    assert len(fig.data) > 0
+
+
+def test_make_static_matisse_plot_handles_flux_block_without_stations(full_mock_data):
+    """A FLUX block missing STA_INDEX does not break the station bookkeeping."""
+    data = dict(full_mock_data)
+    data["FLUX"] = {"FLUX": full_mock_data["FLUX"]["FLUX"]}
+
+    fig = vp.make_static_matisse_plot(data)
+
+    assert isinstance(fig, go.Figure)
+    assert len(fig.data) > 0
+
+
+def test_make_static_matisse_plot_keeps_each_baseline_series(full_mock_data):
+    """The assembled figure carries each baseline/triplet's own input series."""
+    fig = vp.make_static_matisse_plot(full_mock_data)
+
+    n_wl = len(full_mock_data["WLEN"])
+
+    def curves_named(name: str) -> list[np.ndarray]:
+        return [
+            np.asarray(trace.y, dtype=float)
+            for trace in fig.data
+            if isinstance(trace, go.Scatter)
+            and trace.name == name
+            and trace.y is not None
+            and len(trace.y) == n_wl
+        ]
+
+    for b_idx, bname in enumerate(vp.build_blname_list(full_mock_data)):
+        curves = curves_named(bname)
+        assert any(
+            np.allclose(curve, full_mock_data["VIS2"]["VIS2"][b_idx])
+            for curve in curves
+        )
+        assert any(
+            np.allclose(curve, full_mock_data["VIS"]["DPHI"][b_idx]) for curve in curves
+        )
+
+    for t_idx, tname in enumerate(vp.build_cpname_list(full_mock_data)):
+        assert any(
+            np.allclose(curve, full_mock_data["T3"]["CLOS"][t_idx])
+            for curve in curves_named(tname)
+        )
+
+    for i, flux in enumerate(full_mock_data["FLUX"]["FLUX"]):
+        name = f"{full_mock_data['TEL_NAME'][i]}-{full_mock_data['STA_NAME'][i]}"
+        assert any(np.allclose(curve, flux) for curve in curves_named(name))

@@ -458,3 +458,175 @@ class TestDoctorFullFlowMocked:
         assert f"forced: {forced_dir}" in result.output
         # check_matisse_recipes should have been called with the forced dir
         assert forced_dir in called_with
+
+
+# ---------------------------------------------------------------------------
+# subprocess helpers
+# ---------------------------------------------------------------------------
+
+
+def test_run_raises_on_non_zero_exit():
+    """A failing command is turned into a RuntimeError carrying its stderr."""
+    from matisse.cli import doctor as doctor_module
+
+    with pytest.raises(RuntimeError, match="Command failed"):
+        doctor_module._run(["sh", "-c", "echo boom >&2; exit 1"])
+
+
+def test_run_reports_placeholder_when_stderr_is_empty():
+    """A silent failure still produces a readable error message."""
+    from matisse.cli import doctor as doctor_module
+
+    with pytest.raises(RuntimeError, match=r"\(no stderr\)"):
+        doctor_module._run(["sh", "-c", "exit 3"])
+
+
+def test_run_returns_completed_process_on_success():
+    """A successful command is returned untouched."""
+    from matisse.cli import doctor as doctor_module
+
+    assert doctor_module._run(["sh", "-c", "echo hello"]).stdout.strip() == "hello"
+
+
+@pytest.mark.parametrize("recipe_dir", [None, Path("/opt/recipes")])
+def test_list_esorex_recipes_parses_and_strips_output(monkeypatch, recipe_dir):
+    """Recipe names are stripped and blank lines dropped; recipe_dir is forwarded."""
+    from types import SimpleNamespace
+
+    from matisse.cli import doctor as doctor_module
+
+    seen: list[list[str]] = []
+
+    def fake_run(cmd):
+        seen.append(cmd)
+        return SimpleNamespace(stdout="  mat_raw_estimates \n\n mat_cal_oifits\n")
+
+    monkeypatch.setattr(doctor_module, "_run", fake_run)
+
+    assert doctor_module._list_esorex_recipes(recipe_dir=recipe_dir) == [
+        "mat_raw_estimates",
+        "mat_cal_oifits",
+    ]
+    assert seen[0][0] == "esorex"
+    assert seen[0][-1] == "--recipes"
+    if recipe_dir is not None:
+        assert f"--recipe-dir={recipe_dir}" in seen[0]
+
+
+# ---------------------------------------------------------------------------
+# find_matisse_recipe_dir — verbose reporting
+# ---------------------------------------------------------------------------
+
+
+def test_find_matisse_recipe_dir_verbose_reports_missing_candidate(
+    monkeypatch, tmp_path, capsys
+):
+    """A candidate that is not an existing directory is reported when verbose."""
+    from matisse.cli import doctor as doctor_module
+
+    monkeypatch.delenv("ESOREX_PLUGIN_DIR", raising=False)
+    missing = tmp_path / "nowhere"
+    monkeypatch.setattr(doctor_module, "_candidate_recipe_dirs", lambda extra: extra)
+
+    assert (
+        doctor_module.find_matisse_recipe_dir(extra_candidates=[missing], verbose=True)
+        is None
+    )
+    assert "skip candidate (missing/not dir)" in capsys.readouterr().out
+
+
+def test_find_matisse_recipe_dir_verbose_reports_failing_candidate(
+    monkeypatch, tmp_path, capsys
+):
+    """A candidate whose esorex probe raises is reported when verbose."""
+    from matisse.cli import doctor as doctor_module
+
+    monkeypatch.delenv("ESOREX_PLUGIN_DIR", raising=False)
+    bad_dir = tmp_path / "bad"
+    bad_dir.mkdir()
+    monkeypatch.setattr(doctor_module, "_candidate_recipe_dirs", lambda extra: extra)
+
+    def _fail(recipe_dir=None):
+        raise RuntimeError("esorex failed")
+
+    monkeypatch.setattr(doctor_module, "_list_esorex_recipes", _fail)
+
+    assert (
+        doctor_module.find_matisse_recipe_dir(extra_candidates=[bad_dir], verbose=True)
+        is None
+    )
+    assert "candidate failed" in capsys.readouterr().out
+
+
+def test_find_matisse_recipe_dir_verbose_reports_accepted_candidate(
+    monkeypatch, tmp_path, capsys
+):
+    """An accepted candidate reports how many mat_* recipes it exposes."""
+    from matisse.cli import doctor as doctor_module
+
+    monkeypatch.delenv("ESOREX_PLUGIN_DIR", raising=False)
+    good_dir = tmp_path / "good"
+    good_dir.mkdir()
+    monkeypatch.setattr(doctor_module, "_candidate_recipe_dirs", lambda extra: extra)
+    monkeypatch.setattr(
+        doctor_module,
+        "_list_esorex_recipes",
+        lambda recipe_dir=None: ["mat_raw_estimates", "mat_est_flat", "other"],
+    )
+
+    probe = doctor_module.find_matisse_recipe_dir(
+        extra_candidates=[good_dir], verbose=True
+    )
+
+    assert probe is not None
+    assert probe.recipe_dir == good_dir
+    assert probe.matisse_recipes == ["mat_est_flat", "mat_raw_estimates"]
+    assert "candidate ok" in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------------------
+# check_calibrator_databases — local override
+# ---------------------------------------------------------------------------
+
+
+def test_check_calibrator_databases_reports_local_override(monkeypatch):
+    """A locally overridden database set is reported as 'local override'."""
+    from matisse.cli import doctor as doctor_module
+
+    monkeypatch.setattr(
+        doctor_module,
+        "database_status",
+        lambda: {"a.fits": "local_override", "b.fits": "cached"},
+    )
+
+    result = doctor_module.check_calibrator_databases()
+
+    assert result.ok
+    assert "local override" in result.message
+
+
+def test_doctor_discovers_recipe_dir_through_macports_probe(monkeypatch, tmp_path):
+    """With no forced dir and no env var, the probe's discovery is reported."""
+    from matisse.cli import doctor as doctor_module
+
+    discovered_dir = tmp_path / "esopipes-plugins"
+    discovered_dir.mkdir()
+
+    monkeypatch.setattr(
+        doctor_module.shutil, "which", lambda cmd: "/usr/local/bin/esorex"
+    )
+    monkeypatch.delenv("ESOREX_PLUGIN_DIR", raising=False)
+    monkeypatch.setattr(
+        doctor_module, "_candidate_recipe_dirs", lambda extra: [discovered_dir]
+    )
+    monkeypatch.setattr(
+        doctor_module,
+        "_list_esorex_recipes",
+        lambda recipe_dir=None: ["mat_raw_estimates"],
+    )
+    monkeypatch.setattr(doctor_module, "database_status", lambda: {"db.fits": "cached"})
+
+    result = runner.invoke(app, ["doctor", "--macports-probe"], catch_exceptions=False)
+
+    assert result.exit_code == 0
+    assert f"found: {discovered_dir}" in result.output
