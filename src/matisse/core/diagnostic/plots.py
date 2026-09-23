@@ -29,6 +29,14 @@ COLOR_CAL = "#b0b0b0"
 COLOR_SCI = "#d62728"
 COLOR_CP_CAL = "#2ca02c"
 
+#: Legend group -> colour (data source).
+SOURCE_COLORS = {
+    "cal": COLOR_CAL,
+    "sci": COLOR_SCI,
+    "tf": COLOR_TF,
+    "cpcal": COLOR_CP_CAL,
+}
+
 HOVER = (
     "<b>%{customdata[0]}</b> (%{customdata[1]})<br>"
     "%{x|%H:%M:%S} UT<br>"
@@ -57,18 +65,20 @@ def _add_points(
     df: pd.DataFrame,
     row: int,
     col: int,
-    name: str,
+    source: str,
     color: str,
-    show_legend: bool,
     opacity: float = 1.0,
     size: int = 7,
 ) -> None:
-    """One trace per (BCD, chop): marker shape = BCD, open marker = Chop."""
+    """One trace per (BCD, chop): marker shape = BCD, open marker = Chop.
+
+    Data traces are hidden from the legend; they belong to the legend group
+    ``source`` so that clicking the corresponding legend entry toggles them.
+    """
     for (bcd, chop), g in df.groupby(["bcd", "chop"], sort=False):
         symbol = BCD_SYMBOLS.get(bcd, "x")
         if chop == "Chop":
             symbol += "-open"
-        label = f"{name} {bcd}" + (" chop" if chop == "Chop" else "")
         fig.add_trace(
             go.Scatter(
                 x=g["time"],
@@ -85,15 +95,99 @@ def _add_points(
                     },
                 },
                 opacity=opacity,
-                name=label,
-                legendgroup=label,
-                showlegend=show_legend,
+                name=f"{source} {bcd} {chop}",
+                legend=SOURCE_LEGEND.get(source, "legend"),
+                legendgroup=source,
+                showlegend=False,
                 customdata=_customdata(g),
                 hovertemplate=HOVER,
             ),
             row=row,
             col=col,
         )
+
+
+#: Legend holding each source entry: sources are split on two rows
+#: (``legend`` / ``legend2``); BCD and chopping symbols go in ``legend3``.
+SOURCE_LEGEND = {"cal": "legend", "sci": "legend", "tf": "legend2", "cpcal": "legend2"}
+
+
+def _add_legend(
+    fig: go.Figure, sources: dict[str, str], bcds: list[str], has_chop: bool
+) -> None:
+    """Legend-only traces: colour = data source, marker = BCD (+ Chop).
+
+    Each entry is its own legend group so that entries are laid out on one
+    row in a horizontal legend; source groups match the data traces.
+    """
+
+    def _entry(name: str, group: str, legend: str, color: str, symbol: str) -> None:
+        fig.add_trace(
+            go.Scatter(
+                x=[None],
+                y=[None],
+                mode="markers",
+                marker={
+                    "color": color,
+                    "symbol": symbol,
+                    "size": 10,
+                    "line": {"width": 1, "color": "black"},
+                },
+                name=name,
+                legend=legend,
+                legendgroup=group,
+                showlegend=True,
+                hoverinfo="skip",
+            )
+        )
+
+    for key, label in sources.items():
+        _entry(label, key, SOURCE_LEGEND[key], SOURCE_COLORS[key], "square")
+    for bcd in bcds:
+        _entry(bcd, f"_bcd{bcd}", "legend3", "white", BCD_SYMBOLS[bcd])
+    if has_chop:
+        _entry("Chop (open)", "_chop", "legend3", "gray", "circle-open")
+
+
+def _legend_layout(height: int, margin_t: int, margin_b: int) -> tuple[dict, list]:
+    """Place the three legends below the plots (paper coordinates).
+
+    Legend titles are drawn as annotations: plotly legend titles shift the
+    first row, which would misalign the two source rows.
+    """
+    px = 1.0 / (height - margin_t - margin_b)  # 1 pixel in paper units
+    y0 = -85 * px  # below the x-axis title
+    x_src, x_bcd = 0.2, 0.55
+    common = {
+        "orientation": "h",
+        "yanchor": "top",
+        "xanchor": "left",
+        "groupclick": "togglegroup",
+        "tracegroupgap": 10,
+    }
+    layout = {
+        "legend": {**common, "x": x_src, "y": y0},
+        "legend2": {**common, "x": x_src, "y": y0 - 24 * px},
+        "legend3": {**common, "x": x_bcd, "y": y0},
+    }
+    titles = [
+        {
+            "text": text,
+            "x": x,
+            "y": y0,
+            "xref": "paper",
+            "yref": "paper",
+            "xanchor": "right",
+            "yanchor": "top",
+            "yshift": -3,
+            "showarrow": False,
+        }
+        for text, x in (
+            ("<b>Colour = source</b>", x_src),
+            ("<b>Symbol = BCD</b>", x_bcd),
+        )
+    ]
+    return layout, titles
 
 
 def _add_target_labels(fig: go.Figure, df: pd.DataFrame) -> None:
@@ -145,21 +239,18 @@ def _add_night(
     sci = df_vis2[df_vis2["category"] == "SCI"]
 
     for i, bl in enumerate(baselines):
-        row, first = i + 1, i == 0
+        row = i + 1
         _add_points(
             fig,
             cal[cal["baseline"] == bl],
             row,
             1,
-            f"{qty} cal",
+            "cal",
             COLOR_CAL,
-            first,
             opacity=0.6,
             size=6,
         )
-        _add_points(
-            fig, sci[sci["baseline"] == bl], row, 1, f"{qty} sci", COLOR_SCI, first
-        )
+        _add_points(fig, sci[sci["baseline"] == bl], row, 1, "sci", COLOR_SCI)
         tf_bl = df_tf[df_tf["baseline"] == bl].sort_values("mjd")
         # TF interpolated linearly between calibrators, per BCD position
         # and chopping mode (mat_cal_oifits calibrates them separately).
@@ -172,12 +263,14 @@ def _add_night(
                     line={"color": COLOR_TF, "width": 0.8, "dash": "dot"},
                     opacity=0.6,
                     hoverinfo="skip",
+                    legend=SOURCE_LEGEND["tf"],
+                    legendgroup="tf",
                     showlegend=False,
                 ),
                 row=row,
                 col=1,
             )
-        _add_points(fig, tf_bl, row, 1, tf_name, COLOR_TF, first)
+        _add_points(fig, tf_bl, row, 1, "tf", COLOR_TF)
 
     # Normalised quantities -> fixed range. Correlated-flux TF (e.g. N band
     # in coherent mode) are in ADU/Jy: keep autorange.
@@ -199,25 +292,23 @@ def _add_night(
         cp_cal = df_t3[df_t3["category"] == "CAL"]
         cp_sci = df_t3[df_t3["category"] == "SCI"]
         for i, tri in enumerate(triangles):
-            row, first = i + 1, i == 0
+            row = i + 1
             fig.add_hline(y=0, line={"color": "gray", "width": 0.8}, row=row, col=2)
             _add_points(
                 fig,
                 cp_cal[cp_cal["baseline"] == tri],
                 row,
                 2,
-                "CP cal",
+                "cpcal",
                 COLOR_CP_CAL,
-                first,
             )
             _add_points(
                 fig,
                 cp_sci[cp_sci["baseline"] == tri],
                 row,
                 2,
-                "CP sci",
+                "sci",
                 COLOR_SCI,
-                False,
             )
     for row in range(1, n_rows + 1):
         y = _axis_name("yaxis", row, 2)
@@ -302,7 +393,12 @@ def make_transfer_function_plot(
         horizontal_spacing=0.07,
         column_titles=[f"{qty} & {tf_name} vs time", "Closure phase vs time"],
     )
-    base_annotations = [a.to_plotly_json() for a in fig.layout.annotations]
+    height = max(170 * n_rows, 600)
+    margin = {"t": 110, "b": 170}
+    legend_layout, legend_titles = _legend_layout(height, margin["t"], margin["b"])
+    base_annotations = [
+        a.to_plotly_json() for a in fig.layout.annotations
+    ] + legend_titles
     wl_txt = f" — λ ∈ [{wl_range[0]:.2f}, {wl_range[1]:.2f}] µm" if wl_range else ""
 
     states = []
@@ -338,9 +434,27 @@ def make_transfer_function_plot(
             **st["layout"],
         }
 
+    # Legend-only traces, always visible
+    i_legend = len(fig.data)
+    all_df = pd.concat([d for d in (df_tf, df_vis2, df_t3) if d is not None])
+    sources = {}
+    if (df_vis2["category"] == "CAL").any():
+        sources["cal"] = f"{qty} calibrator"
+    if all_df["category"].eq("SCI").any():
+        sources["sci"] = f"{qty} / CP science"
+    if not df_tf.empty:
+        sources["tf"] = f"Transfer function {tf_name}"
+    if df_t3 is not None and (df_t3["category"] == "CAL").any():
+        sources["cpcal"] = "CP calibrator"
+    bcds = [b for b in BCD_SYMBOLS if b in set(all_df["bcd"])]
+    _add_legend(fig, sources, bcds, all_df["chop"].eq("Chop").any())
+
+    def _mask(st: dict) -> list[bool]:
+        return [i in st["traces"] or i >= i_legend for i in range(len(fig.data))]
+
     # Initial state = first night
-    for i, tr in enumerate(fig.data):
-        tr.visible = i in states[0]["traces"]
+    for tr, vis in zip(fig.data, _mask(states[0]), strict=True):
+        tr.visible = vis
     first = _update(states[0])
     # Assign arrays directly: update_layout() would merge them element-wise.
     fig.layout.shapes = first.pop("shapes")
@@ -353,7 +467,7 @@ def make_transfer_function_plot(
                 "label": st["label"],
                 "method": "update",
                 "args": [
-                    {"visible": [i in st["traces"] for i in range(len(fig.data))]},
+                    {"visible": _mask(st)},
                     _update(st),
                 ],
             }
@@ -379,10 +493,10 @@ def make_transfer_function_plot(
     fig.update_layout(
         title={"x": 0.5},
         template="plotly_white",
-        height=max(170 * n_rows, 600),
+        height=height,
         width=1500,
         hovermode="closest",
-        legend={"orientation": "h", "y": -0.06, "x": 0.5, "xanchor": "center"},
-        margin={"t": 110, "b": 90},
+        margin=margin,
+        **legend_layout,
     )
     return fig
