@@ -197,3 +197,44 @@ def test_cli_night_filter(two_nights, tmp_path):
     assert f"Night {second}" not in html  # one night selected -> no menu
     result = runner.invoke(app, [*args, "-n", "1999-01-01", "--save", str(out)])
     assert result.exit_code == 1
+
+
+def test_bcd_magic_factors():
+    from matisse.core.diagnostic.night import bcd_magic_factors
+
+    wl = np.linspace(5.0, 2.9, 50)
+    assert np.all(bcd_magic_factors("OUT-OUT", wl) == 1)
+    f = bcd_magic_factors("IN-IN", wl)
+    assert f.shape == (6, 50)
+    assert np.all(f[:2] == 1)  # first two baselines are not swapped by the BCD
+    assert not np.allclose(f[2:], 1)
+
+
+def test_extract_with_magic_numbers():
+    oidata = load_night(DATA / "test_dir_bcd")
+    raw = extract_timeseries(oidata, "VIS2", "LM")
+    mn = extract_timeseries(oidata, "VIS2", "LM", magic=True)
+    ratio = (mn["value"] / raw["value"]).to_numpy()
+    oo = (raw["bcd"] == "OUT-OUT").to_numpy()
+    assert np.allclose(ratio[oo], 1)
+    assert not np.allclose(ratio[~oo], 1)
+    # N band / closure phases untouched
+    t3 = extract_timeseries(oidata, "T3", "LM")
+    assert t3["value"].equals(
+        extract_timeseries(oidata, "T3", "LM", magic=True)["value"]
+    )
+
+
+def test_magic_numbers_match_bcd_pipeline():
+    """Same factors as `matisse bcd apply` (_apply_bcd_corrections_single)."""
+    from matisse.core.bcd.correction import _apply_bcd_corrections_single
+    from matisse.core.diagnostic.night import bcd_magic_factors
+    from matisse.core.utils.oifits_reader import OIFitsReader
+
+    d = DATA / "test_dir_bcd"
+    base = "fake_calib_IR-LM_LOW"
+    ref = _apply_bcd_corrections_single(d, None, base)
+    for mode in ("IN_IN", "IN_OUT", "OUT_IN"):
+        raw = OIFitsReader(d / f"{base}_{mode}_noChop.fits").read()
+        mine = raw.vis2["VIS2"] * bcd_magic_factors(mode, raw.wavelength * 1e6)
+        np.testing.assert_allclose(mine, ref[mode].vis2["VIS2"], rtol=1e-12)

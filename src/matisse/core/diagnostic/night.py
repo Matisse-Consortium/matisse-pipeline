@@ -23,6 +23,9 @@ import numpy as np
 import pandas as pd
 from astropy.time import Time
 
+from matisse.core.bcd.config import BCD_BASELINE_MAP, BCD_MODES_TO_CORRECT
+from matisse.core.bcd.correction import _compute_poly_correction
+from matisse.core.bcd.io_utils import load_bcd_corrections
 from matisse.core.utils.oifits_reader import OIFitsData, OIFitsReader
 
 logger = logging.getLogger(__name__)
@@ -124,6 +127,45 @@ def _file_meta(d: OIFitsData) -> dict[str, str]:
     }
 
 
+#: Tables whose values are V²-like and can receive the BCD magic numbers.
+MAGIC_TABLES = ("VIS2", "TF2")
+
+
+def bcd_magic_factors(bcd: str, wl_um: np.ndarray) -> np.ndarray:
+    """Multiplicative BCD correction ("magic numbers") for the 6 baselines.
+
+    Uses the master polynomial coefficients shipped with the package
+    (``core/bcd/master_mn_calibration``) exactly as
+    :func:`matisse.core.bcd.correction.apply_bcd_corrections`: for each pair of
+    swapped baselines, one is multiplied and the other divided by the
+    polynomial correction.
+
+    Parameters
+    ----------
+    bcd : str
+        BCD position, ``"IN-IN"`` or ``"IN_IN"`` style. OUT-OUT is the
+        reference (factors = 1).
+    wl_um : ndarray
+        Wavelength grid of the file in µm (MATISSE order, decreasing).
+
+    Returns
+    -------
+    ndarray, shape (6, n_wl)
+        Factors in storage (row) order of the OIFITS table.
+    """
+    mode = bcd.replace("-", "_")
+    factors = np.ones((6, wl_um.size))
+    if mode not in BCD_MODES_TO_CORRECT:
+        return factors
+    coeffs = load_bcd_corrections(mode)
+    order = BCD_BASELINE_MAP[mode]
+    for j in (0, 2):
+        corr = _compute_poly_correction(wl_um, coeffs, j)
+        factors[order[coeffs["baseline_idx1"][j]]] *= corr
+        factors[order[coeffs["baseline_idx2"][j]]] /= corr
+    return factors
+
+
 def _canonical_label(sta_idx: np.ndarray, ref: dict[int, str]) -> str:
     """Station-name label independent of BCD ordering (sorted by name)."""
     names = sorted(ref.get(int(i), str(int(i))) for i in sta_idx)
@@ -143,6 +185,7 @@ def extract_timeseries(
     band: str,
     wl_range: tuple[float, float] | None = None,
     chop: str = "all",
+    magic: bool = False,
 ) -> pd.DataFrame:
     """Flatten one OIFITS table over a night into a tidy DataFrame.
 
@@ -161,6 +204,9 @@ def extract_timeseries(
         Wavelength window in µm. Defaults to :data:`DEFAULT_WL_RANGE`.
     chop : {"all", "chop", "nochop"}
         Keep only chopped / non-chopped exposures.
+    magic : bool
+        Apply the packaged BCD magic numbers to V²-like tables (VIS2, TF2),
+        LM band only. For display purpose: files are not modified.
 
     Returns
     -------
@@ -194,6 +240,7 @@ def extract_timeseries(
             )
             continue
 
+        bcd = f"{d.bcd1_name}-{d.bcd2_name}" if d.bcd1_name else "?"
         ref = {int(i): str(n) for i, n in zip(d.sta_index, d.sta_name, strict=False)}
         values = np.atleast_2d(tab[col])
         errors = np.atleast_2d(tab.get(errcol, np.full_like(values, np.nan)))
@@ -201,11 +248,20 @@ def extract_timeseries(
             flag = np.atleast_2d(tab["FLAG"]).astype(bool)
             values = np.where(flag, np.nan, values)
             errors = np.where(flag, np.nan, errors)
+        if (
+            magic
+            and table in MAGIC_TABLES
+            and band == "LM"
+            and values.shape[0] % 6 == 0
+        ):
+            # rows are stored per exposure as blocks of 6 baselines
+            f = np.tile(bcd_magic_factors(bcd, wl), (values.shape[0] // 6, 1))
+            values = values * f
+            errors = errors * f
         mjds = np.atleast_1d(tab["TIME"])
         sta = np.asarray(tab["STA_INDEX"])
         if sta.ndim == 1:
             sta = sta[:, None]
-        bcd = f"{d.bcd1_name}-{d.bcd2_name}" if d.bcd1_name else "?"
 
         for i in range(values.shape[0]):
             rows.append(

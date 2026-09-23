@@ -98,11 +98,12 @@ def run_tf(
     open_browser: bool,
     chop: str = "all",
     nights: list[str] | None = None,
+    magic: bool = False,
 ) -> bool:
     """Transfer-function diagnostic for one band. Return False if no data."""
     wl = wl_range or DEFAULT_WL_RANGE[band]
     dfs = {
-        key: extract_timeseries(oidata, key, band, wl, chop)
+        key: extract_timeseries(oidata, key, band, wl, chop, magic)
         for key in ("TF2", "VIS2", "T3")
     }
     if nights:
@@ -123,11 +124,22 @@ def run_tf(
         _print_tf_table(
             tf_statistics(g), f"Transfer function stability — {band} — night {n}"
         )
-    console.print(f"[cyan]{band}[/]: λ ∈ [{wl[0]:.2f}, {wl[1]:.2f}] µm, chop={chop}")
+    if magic and band != "LM":
+        log.warning("BCD magic numbers are only defined for LM: not applied in N.")
+    mn = magic and band == "LM"
+    console.print(
+        f"[cyan]{band}[/]: λ ∈ [{wl[0]:.2f}, {wl[1]:.2f}] µm, chop={chop}"
+        + (", [magenta]BCD magic numbers applied (display only)[/]" if mn else "")
+    )
 
     def _fig(tf, v2, t3):
         return make_transfer_function_plot(
-            tf, v2, t3, band=band, wl_range=wl, show_vis=show_vis
+            tf,
+            v2,
+            t3,
+            band=band + (" + BCD magic numbers" if mn else ""),
+            wl_range=wl,
+            show_vis=show_vis,
         )
 
     if save is not None and save.suffix.lower() not in {".html", ".png", ".pdf"}:
@@ -191,6 +203,12 @@ def diagnostic(
         help="Chopping mode to display: all, chop or nochop (Chop = open markers).",
         case_sensitive=False,
     ),
+    magic: bool = typer.Option(
+        False,
+        "--magic",
+        help="Apply the packaged BCD magic numbers to V² and TF² (LM only). "
+        "Display only: OIFITS files are not modified.",
+    ),
     nights: list[str] | None = typer.Option(
         None,
         "--night",
@@ -249,7 +267,17 @@ def diagnostic(
     if tf:
         section("Transfer function")
         found = [
-            run_tf(oidata, band, wl_range, show_vis, save, open_browser, chop, nights)
+            run_tf(
+                oidata,
+                band,
+                wl_range,
+                show_vis,
+                save,
+                open_browser,
+                chop,
+                nights,
+                magic,
+            )
             for band in bands
         ]
         if not any(found):
