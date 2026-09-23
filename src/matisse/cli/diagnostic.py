@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+import pandas as pd
 import plotly.io as pio
 import typer
 from rich.table import Table
@@ -31,8 +32,8 @@ from matisse.viewer import viewer_plotly
 VALID_BANDS = ("LM", "N")
 
 
-def _print_tf_table(stats, band: str) -> None:
-    table = Table(title=f"Transfer function stability — {band}", show_lines=False)
+def _print_tf_table(stats, title: str) -> None:
+    table = Table(title=title, show_lines=False)
     table.add_column("Baseline", style="cyan")
     table.add_column("N pts", justify="right")
     table.add_column("N cal", justify="right")
@@ -53,66 +54,107 @@ def _print_tf_table(stats, band: str) -> None:
     console.print(table)
 
 
-def _output(fig, save: Path | None, band: str, open_browser: bool) -> None:
-    if save is None:
-        viewer_plotly.show_plot(
-            fig, filename=f"matisse_tf_{band}.html", auto_open=open_browser
+def _print_nights(df_vis2: pd.DataFrame, band: str) -> None:
+    """Summary of the observing nights found in the directory."""
+    table = Table(title=f"Observing nights — {band}")
+    table.add_column("Night", style="cyan")
+    table.add_column("Config")
+    table.add_column("CAL", justify="right")
+    table.add_column("SCI", justify="right")
+    table.add_column("Targets")
+    for night, g in df_vis2.groupby("night"):
+        cal = g[g["category"] == "CAL"]
+        sci = g[g["category"] == "SCI"]
+        table.add_row(
+            str(night),
+            ", ".join(sorted(g["config"].unique())),
+            str(cal["tpl"].nunique()),
+            str(sci["tpl"].nunique()),
+            ", ".join(sorted(sci["target"].unique()))
+            + (" | " if len(sci) and len(cal) else "")
+            + ", ".join(f"[dim]{t}[/]" for t in sorted(cal["target"].unique())),
         )
-        return
-    # One file per band when several bands are plotted.
-    path = save.with_name(f"{save.stem}_{band}{save.suffix}")
+    console.print(table)
+
+
+def _write(fig, path: Path, open_browser: bool) -> None:
     ext = path.suffix.lower()
     if ext == ".html":
         pio.write_html(fig, path, auto_open=open_browser)
-    elif ext in {".png", ".pdf"}:
+    else:
         # kaleido/choreographer are very verbose at INFO level.
         for name in ("kaleido", "choreographer", "logistro"):
             logging.getLogger(name).setLevel(logging.WARNING)
         pio.write_image(fig, path)
-    else:
-        console.print(f"[red]Unsupported format {ext}. Use .html, .png or .pdf.[/]")
-        raise typer.Exit(code=1)
     log.info(f"💾 Figure saved as {path}")
 
 
 def run_tf(
-    night,
+    oidata,
     band: str,
     wl_range: tuple[float, float] | None,
     show_vis: bool,
     save: Path | None,
     open_browser: bool,
     chop: str = "all",
+    nights: list[str] | None = None,
 ) -> bool:
     """Transfer-function diagnostic for one band. Return False if no data."""
     wl = wl_range or DEFAULT_WL_RANGE[band]
-    df_tf = extract_timeseries(night, "TF2", band, wl, chop)
-    df_vis2 = extract_timeseries(night, "VIS2", band, wl, chop)
-    df_t3 = extract_timeseries(night, "T3", band, wl, chop)
+    dfs = {
+        key: extract_timeseries(oidata, key, band, wl, chop)
+        for key in ("TF2", "VIS2", "T3")
+    }
+    if nights:
+        dfs = {k: df[df["night"].isin(nights)] for k, df in dfs.items()}
+    df_tf, df_vis2, df_t3 = dfs["TF2"], dfs["VIS2"], dfs["T3"]
 
     if df_vis2.empty:
         log.warning(f"No {band} data found.")
         return False
+
+    _print_nights(df_vis2, band)
     if df_tf.empty:
         log.warning(
             f"No TF2 table found in {band} calibrators (CALIB_RAW_INT). "
             "Only raw V² will be shown."
         )
-    else:
-        _print_tf_table(tf_statistics(df_tf), band)
+    for n, g in df_tf.groupby("night"):
+        _print_tf_table(
+            tf_statistics(g), f"Transfer function stability — {band} — night {n}"
+        )
+    console.print(f"[cyan]{band}[/]: λ ∈ [{wl[0]:.2f}, {wl[1]:.2f}] µm, chop={chop}")
 
-    n_cal = df_vis2.loc[df_vis2["category"] == "CAL", "tpl"].nunique()
-    n_sci = df_vis2.loc[df_vis2["category"] == "SCI", "tpl"].nunique()
-    console.print(
-        f"[cyan]{band}[/]: {n_cal} CAL / {n_sci} SCI templates "
-        f"({df_vis2['file'].nunique()} files), "
-        f"λ ∈ [{wl[0]:.2f}, {wl[1]:.2f}] µm"
-    )
+    def _fig(tf, v2, t3):
+        return make_transfer_function_plot(
+            tf, v2, t3, band=band, wl_range=wl, show_vis=show_vis
+        )
 
-    fig = make_transfer_function_plot(
-        df_tf, df_vis2, df_t3, band=band, wl_range=wl, show_vis=show_vis
-    )
-    _output(fig, save, band, open_browser)
+    if save is not None and save.suffix.lower() not in {".html", ".png", ".pdf"}:
+        console.print(
+            f"[red]Unsupported format {save.suffix}. Use .html, .png or .pdf.[/]"
+        )
+        raise typer.Exit(code=1)
+
+    if save is None or save.suffix.lower() == ".html":
+        # Interactive: one file, night selected with a drop-down menu.
+        fig = _fig(df_tf, df_vis2, df_t3)
+        if save is None:
+            viewer_plotly.show_plot(
+                fig, filename=f"matisse_tf_{band}.html", auto_open=open_browser
+            )
+        else:
+            _write(fig, save.with_name(f"{save.stem}_{band}.html"), open_browser)
+        return True
+
+    # Static images: one file per night.
+    for n in sorted(df_vis2["night"].unique()):
+        fig = _fig(
+            df_tf[df_tf["night"] == n],
+            df_vis2[df_vis2["night"] == n],
+            df_t3[df_t3["night"] == n],
+        )
+        _write(fig, save.with_name(f"{save.stem}_{band}_{n}{save.suffix}"), False)
     return True
 
 
@@ -149,11 +191,19 @@ def diagnostic(
         help="Chopping mode to display: all, chop or nochop (Chop = open markers).",
         case_sensitive=False,
     ),
+    nights: list[str] | None = typer.Option(
+        None,
+        "--night",
+        "-n",
+        help="Observing night(s) to show (evening date YYYY-MM-DD). Repeatable. "
+        "Default: all nights, selectable with a drop-down menu.",
+    ),
     save: Path | None = typer.Option(
         None,
         "--save",
         "-s",
-        help="Save figure (.html, .png or .pdf); band is appended to the name.",
+        help="Save figure (.html, .png or .pdf). Band (and night for images) "
+        "are appended to the name.",
     ),
     open_browser: bool = typer.Option(
         True,
@@ -190,16 +240,16 @@ def diagnostic(
         raise typer.Exit(code=1)
 
     section("MATISSE night diagnostic")
-    night = load_night(datadir)
-    if not night:
+    oidata = load_night(datadir)
+    if not oidata:
         log.error(f"No reduced OIFITS (*_RAW_INT) found in {datadir}.")
         raise typer.Exit(code=1)
-    log.info(f"{len(night)} OIFITS files loaded from {datadir.resolve()}")
+    log.info(f"{len(oidata)} OIFITS files loaded from {datadir.resolve()}")
 
     if tf:
         section("Transfer function")
         found = [
-            run_tf(night, band, wl_range, show_vis, save, open_browser, chop)
+            run_tf(oidata, band, wl_range, show_vis, save, open_browser, chop, nights)
             for band in bands
         ]
         if not any(found):

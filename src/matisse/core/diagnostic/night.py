@@ -1,7 +1,7 @@
 """
 Night-level data collection for MATISSE diagnostics.
 
-Loads every reduced OIFITS file of a directory -- typically
+Loads every reduced (``*_RAW_INT``) OIFITS file of a directory -- typically
 the ``reduced_OIFITS/`` folder produced by ``matisse format``, with names like
 ``2022-07-02T041700_HD143006_K0G2D0J3_IR-LM_LOW_OUT_OUT_noChop.fits`` -- and flattens
 the requested table (TF2, VIS2, T3, ...) into a tidy :class:`pandas.DataFrame`
@@ -165,7 +165,8 @@ def extract_timeseries(
     Returns
     -------
     pandas.DataFrame
-        Columns listed in :data:`COLUMNS`. ``baseline`` holds station names
+        Columns listed in :data:`COLUMNS` plus ``night`` (see
+        :func:`night_label`). ``baseline`` holds station names
         (``"A0-G1"``, ``"A0-G1-J2"`` for closure phases, ``"A0"`` for flux),
         sorted so that the four BCD positions share the same label.
     """
@@ -228,7 +229,19 @@ def extract_timeseries(
 
     df = pd.DataFrame(rows, columns=[c for c in COLUMNS if c != "time"])
     df.insert(1, "time", _mjd_to_datetime(df["mjd"].to_numpy()))
+    df.insert(2, "night", night_label(df["time"]))
     return df.sort_values("mjd", ignore_index=True)
+
+
+def night_label(time: pd.Series) -> pd.Series:
+    """Observing night as the ISO date of the evening (ESO convention).
+
+    UT is shifted by -12 h so that a whole Paranal night (~22h-11h UT)
+    maps onto the same label, e.g. 2022-07-02T04:17 UT -> ``"2022-07-01"``.
+    """
+    if time.empty:
+        return pd.Series([], dtype=str)
+    return (time - pd.Timedelta(hours=12)).dt.strftime("%Y-%m-%d")
 
 
 def _mjd_to_datetime(mjd: np.ndarray) -> pd.Series:

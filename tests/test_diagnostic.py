@@ -3,7 +3,9 @@
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import pytest
+from astropy.io import fits
 from typer.testing import CliRunner
 
 from matisse.cli.main import app
@@ -13,6 +15,7 @@ from matisse.core.diagnostic import (
     make_transfer_function_plot,
     tf_statistics,
 )
+from matisse.core.diagnostic.night import night_label
 
 DATA = Path(__file__).parent / "data"
 runner = CliRunner()
@@ -141,3 +144,56 @@ def test_cli_tf_html(tmp_path):
     assert result.exit_code == 0, result.output
     assert (tmp_path / "tf_LM.html").exists()
     assert (tmp_path / "tf_N.html").exists()
+
+
+@pytest.fixture
+def two_nights(tmp_path):
+    """test_dir_bcd copied twice, the second copy shifted by +3 days."""
+    out = tmp_path / "reduced_OIFITS"
+    out.mkdir()
+    for f in sorted((DATA / "test_dir_bcd").glob("*.fits")):
+        for shift in (0.0, 3.0):
+            with fits.open(f) as h:
+                for ext in ("OI_VIS2", "OI_T3", "OI_VIS", "TF2", "OI_FLUX"):
+                    if ext in h:
+                        h[ext].data["MJD"] += shift
+                h.writeto(out / f"{shift:.0f}_{f.name}")
+    return out
+
+
+def test_night_label():
+    t = pd.Series(pd.to_datetime(["2022-07-02T04:17", "2022-07-01T23:30"]))
+    assert list(night_label(t)) == ["2022-07-01", "2022-07-01"]
+
+
+def test_multi_night_dropdown(two_nights):
+    oidata = load_night(two_nights)
+    dfs = [extract_timeseries(oidata, k, "LM") for k in ("TF2", "VIS2", "T3")]
+    assert dfs[1]["night"].nunique() == 2
+    fig = make_transfer_function_plot(*dfs)
+    buttons = fig.layout.updatemenus[0].buttons
+    assert len(buttons) == 2
+    visible = [tr.visible for tr in fig.data]
+    assert 0 < sum(visible) < len(visible)  # only the first night is shown
+    assert buttons[0].args[0]["visible"] == visible
+
+
+def test_single_night_no_dropdown(night):
+    dfs = [extract_timeseries(night, k, "LM") for k in ("TF2", "VIS2", "T3")]
+    fig = make_transfer_function_plot(*dfs)
+    assert not fig.layout.updatemenus
+    assert all(tr.visible for tr in fig.data)
+
+
+def test_cli_night_filter(two_nights, tmp_path):
+    oidata = load_night(two_nights)
+    first, second = sorted(extract_timeseries(oidata, "VIS2", "LM")["night"].unique())
+    out = tmp_path / "tf.html"
+    args = ["diagnostic", str(two_nights), "--tf", "-b", "LM", "--no-open"]
+    result = runner.invoke(app, [*args, "-n", first, "--save", str(out)])
+    assert result.exit_code == 0, result.output
+    html = (tmp_path / "tf_LM.html").read_text()
+    assert f"night {first}" in html
+    assert f"Night {second}" not in html  # one night selected -> no menu
+    result = runner.invoke(app, [*args, "-n", "1999-01-01", "--save", str(out)])
+    assert result.exit_code == 1
