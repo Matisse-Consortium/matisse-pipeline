@@ -328,43 +328,95 @@ def calibrate_total_flux(
     try:
         flux_sci = hdul_sci["OI_FLUX"].data["FLUXDATA"]
         flux_cal = hdul_cal["OI_FLUX"].data["FLUXDATA"]
+        fluxerr_cal = hdul_cal["OI_FLUX"].data["FLUXERR"]
     except KeyError:
         logger.warning("No OI_FLUX table found — skipping total flux calibration.")
         return
 
-    n_exp_sci = len(flux_sci)
-    n_exp_cal = len(flux_cal)
-    if n_exp_sci != n_exp_cal:
-        msg = (
-            f"SCI and CAL have different number of OI_FLUX rows "
-            f"({n_exp_sci} vs {n_exp_cal}). Cannot calibrate."
-        )
-        logger.error(msg)
-        raise ValueError(msg)
+    N_TEL = 4
+    n_row_sci = len(flux_sci)
+    n_exp_sci = n_row_sci // N_TEL
+    n_row_cal = len(flux_cal)
+    n_exp_cal = n_row_cal // N_TEL
+    nwave = np.shape(flux_cal)[1]
+    flux_cal_ave = np.zeros([N_TEL, nwave], dtype=float)
+    ferr_cal_ave = np.zeros([N_TEL, nwave], dtype=float)
 
     # Update units and calibration status
     hdul_out["OI_FLUX"].header["TUNIT5"] = "Jy"
     hdul_out["OI_FLUX"].header["TUNIT6"] = "Jy"
     hdul_out["OI_FLUX"].header["CALSTAT"] = "C"
 
-    for j in range(n_exp_sci):
-        f_sci = _flip_if_lband(flux_sci[j].copy(), band)
-        f_cal = _flip_if_lband(flux_cal[j].copy(), band)
-        ferr_sci = _flip_if_lband(hdul_sci["OI_FLUX"].data["FLUXERR"][j].copy(), band)
-        ferr_cal = _flip_if_lband(hdul_cal["OI_FLUX"].data["FLUXERR"][j].copy(), band)
-        # Calibrated flux: F_sci / F_cal × model × airmass_corr
-        f_calibrated = f_sci / f_cal * spectrum_cal_resampled * airmass_correction
+    # Average of the CAL exposures per telescope
+    if n_exp_cal != 1:
+        for i in range(N_TEL):
+            f_cal_exp = flux_cal[i::N_TEL]
+            ferr_cal_exp = fluxerr_cal[i::N_TEL]
+            print("ferr_cal_exp = ", ferr_cal_exp)
+            weight = 1 / (ferr_cal_exp * ferr_cal_exp)
+            flux_cal_ave[i, :] = np.average(f_cal_exp, axis=0, weights=weight)
+            ferr_cal_ave[i, :] = 1 / np.sqrt(np.sum(weight, axis=0))
 
-        # Error propagation (quadrature)
-        with np.errstate(divide="ignore", invalid="ignore"):
-            ferr_calibrated = (
-                np.abs(f_sci / f_cal)
-                * np.sqrt((ferr_sci / f_sci) ** 2 + (ferr_cal / f_cal) ** 2)
-                * spectrum_cal_resampled
-            )
+        k = 0
+        for j in range(n_exp_sci):
+            for i in range(N_TEL):
+                k = i + j * N_TEL
+                f_sci = _flip_if_lband(flux_sci[k].copy(), band)
+                f_cal = _flip_if_lband(flux_cal_ave[i].copy(), band)
+                ferr_sci = _flip_if_lband(
+                    hdul_sci["OI_FLUX"].data["FLUXERR"][k].copy(), band
+                )
+                ferr_cal = _flip_if_lband(ferr_cal_ave[i].copy(), band)
+                f_calibrated = (
+                    f_sci / f_cal * spectrum_cal_resampled * airmass_correction
+                )
 
-        hdul_out["OI_FLUX"].data["FLUXDATA"][j] = _flip_if_lband(f_calibrated, band)
-        hdul_out["OI_FLUX"].data["FLUXERR"][j] = _flip_if_lband(ferr_calibrated, band)
+                # Error propagation (quadrature)
+                with np.errstate(divide="ignore", invalid="ignore"):
+                    ferr_calibrated = (
+                        np.abs(f_sci / f_cal)
+                        * np.sqrt((ferr_sci / f_sci) ** 2 + (ferr_cal / f_cal) ** 2)
+                        * spectrum_cal_resampled
+                    )
+
+                hdul_out["OI_FLUX"].data["FLUXDATA"][k] = _flip_if_lband(
+                    f_calibrated, band
+                )
+                hdul_out["OI_FLUX"].data["FLUXERR"][k] = _flip_if_lband(
+                    ferr_calibrated, band
+                )
+    else:
+        k = 0
+        for j in range(n_exp_sci):
+            for i in range(N_TEL):
+                k = i + j * N_TEL
+                f_sci = _flip_if_lband(flux_sci[k].copy(), band)
+                f_cal = _flip_if_lband(flux_cal[i].copy(), band)
+                ferr_sci = _flip_if_lband(
+                    hdul_sci["OI_FLUX"].data["FLUXERR"][k].copy(), band
+                )
+                ferr_cal = _flip_if_lband(
+                    hdul_cal["OI_FLUX"].data["FLUXERR"][i].copy(), band
+                )
+                # Calibrated flux: F_sci / F_cal × model × airmass_corr
+                f_calibrated = (
+                    f_sci / f_cal * spectrum_cal_resampled * airmass_correction
+                )
+
+                # Error propagation (quadrature)
+                with np.errstate(divide="ignore", invalid="ignore"):
+                    ferr_calibrated = (
+                        np.abs(f_sci / f_cal)
+                        * np.sqrt((ferr_sci / f_sci) ** 2 + (ferr_cal / f_cal) ** 2)
+                        * spectrum_cal_resampled
+                    )
+
+                hdul_out["OI_FLUX"].data["FLUXDATA"][k] = _flip_if_lband(
+                    f_calibrated, band
+                )
+                hdul_out["OI_FLUX"].data["FLUXERR"][k] = _flip_if_lband(
+                    ferr_calibrated, band
+                )
 
     logger.info("Total flux calibration applied (%d exposures).", n_exp_sci)
 
