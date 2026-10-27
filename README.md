@@ -6,7 +6,7 @@
 </p>
 <!-- markdownlint-enable MD033 MD041 -->
 
-[![Status](https://img.shields.io/badge/status-Beta-orange.svg)](https://github.com/Matisse-Consortium/matisse-pipeline) [![Python versions](https://img.shields.io/badge/python-3.10–3.14-blue)](<https://www.python.org/>) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Status](https://img.shields.io/badge/status-Beta-orange.svg)](https://github.com/Matisse-Consortium/matisse-pipeline) [![Python versions](https://img.shields.io/badge/python-3.11–3.14-blue)](<https://www.python.org/>) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 [![CI](https://github.com/Matisse-Consortium/matisse-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/Matisse-Consortium/matisse-pipeline/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/Matisse-Consortium/matisse-pipeline/branch/main/graph/badge.svg?token=N2CINYUJBI)](https://codecov.io/gh/Matisse-Consortium/matisse-pipeline)
