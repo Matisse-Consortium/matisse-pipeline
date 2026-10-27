@@ -1,6 +1,7 @@
 import re
 import subprocess
 
+import numpy as np
 import pytest
 from astropy.io import fits
 from typer.testing import CliRunner
@@ -863,6 +864,34 @@ def test_bcd_merge(bcd_dir, tmp_path):
     assert result.exit_code == 0
 
 
+@pytest.fixture
+def offline_flux_services(monkeypatch):
+    """Keep flux_calibrate offline: skip STARSFLUX and fake the SkyCalc output.
+
+    The calibrator is then taken from the local databases, and SkyCalc returns
+    a flat transmission written in its native format (wavelength in nm).
+    """
+    from matisse.core.flux import airmass, calibrator_spectrum
+
+    monkeypatch.setattr(
+        calibrator_spectrum, "lookup_starsflux", lambda *_args, **_kwargs: None
+    )
+
+    def fake_run_skycalc(_input_path, output_path):
+        lam_nm = np.arange(2000.0, 14000.0, 1.0)
+        hdu = fits.BinTableHDU.from_columns(
+            [
+                fits.Column(name="lam", format="D", array=lam_nm),
+                fits.Column(name="trans", format="D", array=np.full_like(lam_nm, 0.9)),
+            ]
+        )
+        fits.HDUList([fits.PrimaryHDU(), hdu]).writeto(output_path, overwrite=True)
+        return True
+
+    monkeypatch.setattr(airmass, "run_skycalc", fake_run_skycalc)
+
+
+@pytest.mark.usefixtures("offline_flux_services")
 def test_flux_calibrate(flux_dir, tmp_path):
     """Test `matisse flux_calibrate` functionality."""
     import shutil
@@ -886,6 +915,7 @@ def test_flux_calibrate(flux_dir, tmp_path):
     )
 
 
+@pytest.mark.usefixtures("offline_flux_services")
 def test_flux_calibrate_show(flux_dir, tmp_path):
     """Test `matisse flux_calibrate` functionality with figures."""
     import shutil
@@ -914,6 +944,7 @@ def test_flux_calibrate_show(flux_dir, tmp_path):
     )
 
 
+@pytest.mark.usefixtures("offline_flux_services")
 def test_flux_calibrate_airmass_correction(flux_dir, tmp_path):
     """Test `matisse flux_calibrate` functionality with airmass correction."""
     import shutil
@@ -937,6 +968,7 @@ def test_flux_calibrate_airmass_correction(flux_dir, tmp_path):
     )
 
 
+@pytest.mark.usefixtures("offline_flux_services")
 def test_flux_calibrate_Nband(flux_dir, tmp_path):
     """Test `matisse flux_calibrate` functionality with correlated flux."""
     import shutil

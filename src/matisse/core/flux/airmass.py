@@ -32,6 +32,9 @@ logger = logging.getLogger(__name__)
 # Allowed PWV values for SkyCalc (mm)
 _PWV_ALLOWED = [0.05, 0.1, 0.25, 0.5, 1.0, 1.5, 2.5, 3.5, 5.0, 7.5, 10.0, 20.0, 30.0]
 
+# Upper bound on a single skycalc_cli run (s); it has no timeout of its own
+_SKYCALC_TIMEOUT_S = 120
+
 
 # ---------------------------------------------------------------------------
 # SkyCalc input file generation
@@ -156,12 +159,33 @@ def run_skycalc(
     cmd = [cli, "-i", str(input_path), "-o", str(output_path)]
     logger.info("Running SkyCalc: %s", " ".join(cmd))
 
+    # Remove any stale output so that its presence below means this run succeeded
+    output_path.unlink(missing_ok=True)
+
     try:
-        subprocess.run(cmd, check=True, capture_output=True, text=True)
-        return True
+        completed = subprocess.run(
+            cmd,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=_SKYCALC_TIMEOUT_S,
+        )
     except subprocess.CalledProcessError as exc:
         logger.error("SkyCalc failed: %s", exc.stderr)
         return False
+    except subprocess.TimeoutExpired:
+        logger.error("SkyCalc timed out after %d s.", _SKYCALC_TIMEOUT_S)
+        return False
+
+    # skycalc_cli exits with status 0 even when the ESO server is unreachable,
+    # so the output file is the only reliable success signal.
+    if not output_path.exists():
+        logger.error(
+            "SkyCalc produced no output file: %s",
+            (completed.stderr or completed.stdout or "").strip(),
+        )
+        return False
+    return True
 
 
 def read_skycalc_output(fpath: Path) -> tuple[np.ndarray, np.ndarray]:
