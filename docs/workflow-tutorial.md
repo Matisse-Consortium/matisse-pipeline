@@ -10,7 +10,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/CLI-matisse-5A29E4.svg" alt="matisse CLI"/>
-  <img src="https://img.shields.io/badge/python-3.10+-blue.svg" alt="Python 3.10+"/>
+  <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python 3.11+"/>
   <img src="https://img.shields.io/badge/engine-esorex-orange.svg" alt="esorex engine"/>
   <img src="https://img.shields.io/badge/format-OIFITS-success.svg" alt="OIFITS"/>
   <img src="https://img.shields.io/badge/level-beginner%20friendly-brightgreen.svg" alt="Beginner friendly"/>
@@ -61,7 +61,7 @@ source my-matisse-env/bin/activate       # activate it (do this each session)
 uv pip install matisse                   # install the CLI inside it
 ```
 
-Once installed and activated, the `matisse` command is available. Python 3.10+
+Once installed and activated, the `matisse` command is available. Python 3.11+
 is required. See the [README installation section](../README.md#-installation-users)
 for the full instructions (including how to install `uv` itself).
 

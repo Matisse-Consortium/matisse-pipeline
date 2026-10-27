@@ -23,7 +23,7 @@ jobs:
         - ubuntu-latest
         - macos-latest
         python-version:
-        - '3.10'
+        - '3.11'
         - '3.14'
 
     runs-on: ${{ matrix.os }}
@@ -90,7 +90,7 @@ jobs:
       with:
         # Match minimal supported Python version
         # to make sure we're not using unparseable syntax
-        python-version: '3.10'
+        python-version: '3.11'
 
     - name: Run mypy
       run: uv run --group typecheck mypy src
