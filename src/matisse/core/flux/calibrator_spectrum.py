@@ -107,6 +107,9 @@ _STARSFLUX_BASE_URL = (
     "https://home.strw.leidenuniv.nl/~gamez/catalog/fitsfilesFinal/Dec30"
 )
 
+# Vizier timeout (s); astroquery's default of 60 s stalls every run when offline
+_STARSFLUX_TIMEOUT_S = 10
+
 
 def lookup_starsflux(
     cal_name: str,
@@ -141,7 +144,8 @@ def lookup_starsflux(
     logger.info("Checking if '%s' is in MDFC / STARSFLUX catalog...", cal_name)
 
     try:
-        result = Vizier.query_object(cal_name, catalog="II/361")
+        vizier = Vizier(timeout=_STARSFLUX_TIMEOUT_S)
+        result = vizier.query_object(cal_name, catalog="II/361")
         if not result or len(result) == 0:
             logger.info("Calibrator '%s' not found in MDFC catalog.", cal_name)
             return None

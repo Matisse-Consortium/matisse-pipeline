@@ -27,9 +27,13 @@ def test_run_skycalc_invokes_the_cli_and_reports_success(monkeypatch, tmp_path):
     """A successful subprocess call yields True and passes the two file paths."""
     monkeypatch.setattr(airmass.shutil, "which", lambda _name: "/fake/skycalc_cli")
     recorded = []
-    monkeypatch.setattr(
-        airmass.subprocess, "run", lambda cmd, **_kw: recorded.append(cmd)
-    )
+
+    def fake_run(cmd, **_kwargs):
+        recorded.append(cmd)
+        (tmp_path / "out.fits").touch()
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(airmass.subprocess, "run", fake_run)
 
     ok = airmass.run_skycalc(tmp_path / "in.txt", tmp_path / "out.fits")
 
@@ -55,6 +59,38 @@ def test_run_skycalc_returns_false_when_the_cli_fails(monkeypatch, tmp_path):
     monkeypatch.setattr(airmass.subprocess, "run", boom)
 
     assert airmass.run_skycalc(tmp_path / "in.txt", tmp_path / "out.fits") is False
+
+
+def test_run_skycalc_returns_false_when_no_output_is_written(monkeypatch, tmp_path):
+    """skycalc_cli exits 0 when ESO is unreachable; a missing output means failure."""
+    monkeypatch.setattr(airmass.shutil, "which", lambda _name: "/fake/skycalc_cli")
+    stale = tmp_path / "out.fits"
+    stale.touch()
+    monkeypatch.setattr(
+        airmass.subprocess,
+        "run",
+        lambda cmd, **_kw: subprocess.CompletedProcess(
+            cmd, 0, stdout="ConnectTimeoutError", stderr=""
+        ),
+    )
+
+    assert airmass.run_skycalc(tmp_path / "in.txt", stale) is False
+    assert not stale.exists()
+
+
+def test_run_skycalc_returns_false_on_timeout(monkeypatch, tmp_path):
+    """A hanging skycalc_cli is interrupted and reported as failure."""
+    monkeypatch.setattr(airmass.shutil, "which", lambda _name: "/fake/skycalc_cli")
+    seen_timeouts = []
+
+    def hang(cmd, **kwargs):
+        seen_timeouts.append(kwargs.get("timeout"))
+        raise subprocess.TimeoutExpired(cmd, kwargs["timeout"])
+
+    monkeypatch.setattr(airmass.subprocess, "run", hang)
+
+    assert airmass.run_skycalc(tmp_path / "in.txt", tmp_path / "out.fits") is False
+    assert seen_timeouts == [airmass._SKYCALC_TIMEOUT_S]
 
 
 # ---------------------------------------------------------------------------

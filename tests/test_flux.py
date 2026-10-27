@@ -330,7 +330,12 @@ def test_lookup_starsflux_no_astroquery(monkeypatch):
 def test_lookup_starsflux_timeout_returns_none(monkeypatch):
     """Timeouts from optional STARSFLUX access should fall back cleanly."""
 
+    seen_timeouts = []
+
     class FakeVizier:
+        def __init__(self, timeout=None):
+            seen_timeouts.append(timeout)
+
         @staticmethod
         def query_object(*_args, **_kwargs):
             raise TimeoutError("The read operation timed out")
@@ -351,8 +356,10 @@ def test_lookup_starsflux_timeout_returns_none(monkeypatch):
     result = calibrator_spectrum.lookup_starsflux("HD26546", 63.13, 17.0)
 
     assert result is None
+    assert seen_timeouts == [calibrator_spectrum._STARSFLUX_TIMEOUT_S]
 
 
+@pytest.mark.network
 def test_lookup_starsflux_realstar():
     """Test that lookup_starsflux can find a real star (HD26546) in the STARSFLUX database."""
     result = calibrator_spectrum.lookup_starsflux("HD26546", 63.13, 17.0)
@@ -1142,7 +1149,8 @@ def _patch_vizier(monkeypatch, query_object):
     """Inject a fake ``astroquery.vizier`` module exposing a stub Vizier."""
 
     class FakeVizier:
-        pass
+        def __init__(self, timeout=None):
+            self.timeout = timeout
 
     FakeVizier.query_object = staticmethod(query_object)
 
